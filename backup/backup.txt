@@ -1,0 +1,1196 @@
+#ifndef RANGEHNSW_RANGEHNSW_HPP
+#define RANGEHNSW_RANGEHNSW_HPP
+
+#include <vector>
+#include <unordered_map>
+#include <algorithm>
+#include <random>
+#include <queue>
+#include <cmath>
+#include <iostream>
+#include <memory>
+#include <cstring>
+#include <climits>
+
+#include "hnswlib/hnswlib.h"
+#define BTREE_M 3
+#define BTREE_D 2
+
+using namespace hnswlib;
+
+class RangeHNSW {
+public:
+    struct CompareByFirst {
+        constexpr bool operator()(std::pair<float, tableint> const& a,
+                                  std::pair<float, tableint> const& b) const noexcept {
+            return a.first < b.first;
+        }
+    };
+
+    typedef std::priority_queue<std::pair<float, tableint>, 
+                                std::vector<std::pair<float, tableint>>, 
+                                CompareByFirst> ResultHeap;
+
+    RangeHNSW(
+            int d,
+            size_t eleNum,
+            size_t maxEleNum,
+            float* vecData,
+            int* keyList,
+            int* valueList,
+            int m,
+            int ef_con
+    );
+
+    ~RangeHNSW();
+
+    std::priority_queue<std::pair<float, hnswlib::labeltype>> 
+    queryRange(float *vecData, int rangeL, int rangeR, int k, int ef_s);
+
+    void addPoint(int key, int value, char* data);
+    void erase(int key);
+    void resize(size_t newMaxN);
+
+private:
+    struct node {
+        int entryPoint;
+        int keynum;
+        int key[BTREE_M];
+        struct node* child[BTREE_M + 1];
+        short int layer;
+        
+        node() : entryPoint(-1), keynum(0), layer(0) {
+            memset(key, 0, sizeof(key));
+            memset(child, 0, sizeof(child));
+        }
+    };
+
+    struct Cluster {
+        std::vector<float> centroid;
+        std::vector<tableint> representatives;
+        float radius;
+        int minAttr, maxAttr;
+        int level;
+        
+        Cluster(int dim) : radius(0), minAttr(INT_MAX), maxAttr(INT_MIN), level(0) {
+            centroid.resize(dim, 0);
+        }
+    };
+
+    size_t maxNum;
+    size_t eleCount;
+    size_t sizeLinkList;
+    
+    node* root;
+    char* vecData_;
+    int* keyList_;
+    int* valueList_;
+    bool* isDeleted;
+    
+    int M;
+    int ef_construction;
+    int dim;
+    int maxLayer;
+    int skipLayer;
+    
+    double mult_;
+    double revSize_;
+    
+    std::vector<char *> linklist;
+    std::vector<short int> searchLayer;
+    unsigned int *visited_array;
+    unsigned int tag;
+    std::vector<int> sortedArray;
+    std::unordered_map<int, int> key2Id;
+    std::mt19937 eng;
+    
+    hnswlib::L2Space space;
+    size_t data_size_;
+    DISTFUNC<float> fstdistfunc_;
+    void *dist_func_param_;
+    
+    int numEdges;
+
+    std::vector<std::unique_ptr<Cluster>> clusters;
+    std::unordered_map<int, std::vector<int>> levelClusters;
+
+    bool cmp(int a, int b);
+    int findEntryLayer(int Layer) const;
+    int findRight(node* nd);
+    void updateEntry(node *nd);
+    inline char *getDataByInternalId(tableint internal_id) const;
+    linklistsizeint *get_linklist(tableint internal_id, int layer) const;
+    unsigned short int getListCount(linklistsizeint *ptr) const;
+    void setListCount(linklistsizeint *ptr, unsigned short int size) const;
+    std::vector<float> getVector(tableint id) const;
+    float distL2(const float* a, const float* b) const;
+    float distL2(const std::vector<float>& a, const std::vector<float>& b) const;
+    float distL2(const float* a, const std::vector<float>& b) const;
+
+    // B树构建和维护 - 恢复完整实现
+    node* buildTree(int eleNum);
+    void traverse(std::vector<tableint>& result, node* nd);
+    node* findHighNode(node* node, int rangeL, int rangeR);
+    int findPosition(node* nd, int value);
+    void collectLevelPoints(node* nd, int targetLevel, std::vector<tableint>& points);
+
+    // 图搜索相关
+    tableint findEntry(const void *query_data, node *nd, tableint currObj) const;
+    ResultHeap searchBaseLayer(const std::vector<tableint> &ep_ids, const void *data_point, int layer);
+    ResultHeap searchBaseLayer0(std::vector<tableint> ep_ids, const void *data_point, 
+                                 int Layer, int rangeL, int rangeR, int ef, int splitPoint);
+    void getNeighborsByHeuristic2(ResultHeap &top_candidates, const size_t M);
+    tableint connectEdges(const void *data_point, tableint cur_c, ResultHeap &top_candidates, int layer);
+
+    // 动态操作
+    void addPoint(int id);
+    void erase(node *nd, int id);
+    void refresh(node *nd, int refreshId);
+    void mergeNode(node *nd, int mergeId);
+    tableint insert(node* nd, int id);
+    void splitNode(node *nd, int splitId);
+    void refresh(node *nd);
+
+    // 聚类相关
+    void buildClusterIndex();
+    void buildClustersForLevel(const std::vector<tableint>& points, int k, int level);
+    std::vector<int> kmeansPlusPlusInit(const std::vector<tableint>& points, int k);
+    std::vector<tableint> findClusterCandidates(float* queryVec, int rangeL, int rangeR, node* targetNode);
+};
+
+// ==================== 构造函数实现 ====================
+
+RangeHNSW::RangeHNSW(
+        int d,
+        size_t eleNum,
+        size_t maxEleNum,
+        float* vecData,
+        int* keyList,
+        int* valueList,
+        int m,
+        int ef_con
+):
+        M(m), ef_construction(ef_con), space(d), dim(d), 
+        linklist(maxEleNum), searchLayer(maxEleNum), 
+        eleCount(eleNum), maxNum(maxEleNum), numEdges(0),
+        mult_(0), revSize_(0), tag(0) {
+
+    skipLayer = log(M)/log(BTREE_D);
+    maxLayer = floor(log((float)maxEleNum) / log(BTREE_D));
+
+    std::cout << "M=" << M << ", maxLayer=" << maxLayer << ", ef_construction=" << ef_con << std::endl;
+
+    visited_array = new unsigned int[maxEleNum]();
+    std::random_device rd;
+    eng = std::mt19937(rd());
+
+    data_size_ = space.get_data_size();
+    fstdistfunc_ = space.get_dist_func();
+    dist_func_param_ = space.get_dist_func_param();
+
+    keyList_ = new int[maxEleNum];
+    valueList_ = new int[maxEleNum];
+    vecData_ = (char*)(new float[maxEleNum * dim]);
+    isDeleted = new bool[maxEleNum]();
+    
+    memcpy(keyList_, keyList, eleNum * sizeof(int));
+    memcpy(valueList_, valueList, eleNum * sizeof(int));
+    memcpy(vecData_, vecData, eleNum * dim * sizeof(float));
+
+    std::cout << "Step 1\n";
+    
+    mult_ = 1 / log(1.0 * M);
+    revSize_ = 1.0 / mult_;
+    sizeLinkList = (M * sizeof(tableint) + sizeof(linklistsizeint));
+
+    linklist.assign(maxEleNum, nullptr);
+    sortedArray.reserve(eleNum);
+    key2Id.clear();
+
+    for(int i = 0; i < eleNum; i++) {
+        key2Id[keyList[i]] = i;
+        linklist[i] = (char *)calloc((maxLayer + 1), sizeLinkList);
+        sortedArray.push_back(i);
+        
+        // 初始化所有层的邻接表
+        for(int layer = 0; layer <= maxLayer; layer++) {
+            unsigned int *newListData = (unsigned int *)get_linklist(i, layer);
+            setListCount(newListData, 0);
+        }
+    }
+
+    sort(sortedArray.begin(), sortedArray.end(), 
+         [this](int a, int b) { return this->cmp(a, b); });
+
+    // 构建完整的B树
+    root = buildTree(eleNum);
+    
+    // 构建聚类索引
+    if (root) {
+        std::cout << "Building cluster index for acceleration..." << std::endl;
+        buildClusterIndex();
+        std::cout << "Cluster index built with " << clusters.size() << " clusters" << std::endl;
+    }
+}
+
+RangeHNSW::~RangeHNSW() {
+    delete[] visited_array;
+    delete[] keyList_;
+    delete[] valueList_;
+    delete[] (float*)vecData_;
+    delete[] isDeleted;
+    
+    for (auto ptr : linklist) {
+        if (ptr) free(ptr);
+    }
+}
+
+// ==================== 完整的B树构建 ====================
+
+RangeHNSW::node* RangeHNSW::buildTree(int eleNum) {
+    if (eleNum == 0) return nullptr;
+    
+    std::queue<std::pair<std::pair<int,int>, node*>> q[2];
+    int qid = 0;
+    
+    // 创建叶子节点
+    for(int i = 0; i < eleNum; i++) {
+        node *nd = new node();
+        nd->layer = 0;
+        nd->entryPoint = sortedArray[i];
+        q[qid].push({{i, i}, nd});
+    }
+    
+    // 自底向上构建
+    while(q[qid].size() > 1) {
+        std::cout << "Building layer " << q[qid].front().second->layer + 1 << std::endl;
+        int nxtqid = qid ^ 1;
+        
+        while(!q[qid].empty()) {
+            std::vector<std::pair<int,int>> tmp;
+            int numChild;
+            
+            if(q[nxtqid].size() % 2 == 0) {
+                numChild = (q[qid].size() >= 2 * BTREE_D) ? BTREE_D : q[qid].size();
+            } else {
+                if (q[qid].size() >= 2 * BTREE_M) numChild = BTREE_M;
+                else if (q[qid].size() <= BTREE_M) numChild = q[qid].size();
+                else numChild = q[qid].size() / 2;
+            }
+            
+            if (numChild == 0) numChild = 1;
+            
+            node* nd = new node();
+            nd->keynum = numChild - 1;
+            
+            for(int i = 0; i < numChild; i++) {
+                if (q[qid].empty()) break;
+                
+                auto t = q[qid].front();
+                tmp.push_back(t.first);
+                q[qid].pop();
+                
+                if (i != 0 && t.first.first < sortedArray.size()) {
+                    nd->key[i - 1] = sortedArray[t.first.first];
+                }
+                nd->child[i] = t.second;
+            }
+            
+            if (!tmp.empty()) {
+                std::uniform_int_distribution<> distr(0, numChild - 1);
+                nd->entryPoint = nd->child[distr(eng)]->entryPoint;
+                nd->layer = nd->child[0]->layer + 1;
+                
+                // 构建这一层的图
+                for(int i = 0; i < numChild; i++) {
+                    for (int ii = tmp[i].first; ii <= tmp[i].second; ii++) {
+                        int id = sortedArray[ii];
+                        ResultHeap candidates;
+                        char *data = getDataByInternalId(id);
+                        
+                        // 从下层图获取邻居
+                        unsigned int *listData = (unsigned int *)get_linklist(id, nd->layer - 1);
+                        int size = getListCount(listData);
+                        
+                        if (size > 0) {
+                            tableint *listD = (tableint *)(listData + 1);
+                            for (int j = 0; j < size; j++) {
+                                if (listD[j] >= 0 && listD[j] < eleCount && !isDeleted[listD[j]]) {
+                                    candidates.emplace(
+                                        fstdistfunc_(data, getDataByInternalId(listD[j]),
+                                                    dist_func_param_), listD[j]);
+                                }
+                            }
+                        }
+                        
+                        // 从兄弟子树获取邻居
+                        for (int j = 0; j < numChild; j++) {
+                            if (i != j && nd->child[j]) {
+                                tableint ep_id = findEntry(data, nd->child[j], nd->child[j]->entryPoint);
+                                if (ep_id >= 0 && ep_id < eleCount) {
+                                    std::vector<tableint> ep_ids = {ep_id};
+                                    ResultHeap r = searchBaseLayer(ep_ids, data, nd->layer - 1);
+                                    getNeighborsByHeuristic2(r, M);
+                                    while (!r.empty()) {
+                                        auto pr = r.top();
+                                        r.pop();
+                                        if (pr.second >= 0 && pr.second < eleCount) {
+                                            candidates.push(pr);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // 启发式选择
+                        getNeighborsByHeuristic2(candidates, M);
+                        
+                        // 写入当前层的邻接表
+                        unsigned int *newListData = (unsigned int *)get_linklist(id, nd->layer);
+                        tableint *newListD = (tableint *)(newListData + 1);
+                        int indx = 0;
+                        while (candidates.size() > 0) {
+                            newListD[indx] = candidates.top().second;
+                            candidates.pop();
+                            indx++;
+                        }
+                        setListCount(newListData, indx);
+                        numEdges += indx;
+                    }
+                }
+                
+                q[nxtqid].push({{tmp[0].first, tmp.back().second}, nd});
+            } else {
+                delete nd;
+            }
+        }
+        
+        qid = nxtqid;
+    }
+    
+    return q[qid].empty() ? nullptr : q[qid].front().second;
+}
+
+void RangeHNSW::traverse(std::vector<tableint>& result, RangeHNSW::node* nd) {
+    if (!nd) return;
+    
+    if (nd->layer == 0) {
+        if (nd->entryPoint >= 0 && nd->entryPoint < eleCount) {
+            result.push_back(nd->entryPoint);
+        }
+        return;
+    }
+    for(int i = 0; i <= nd->keynum; i++) {
+        if (nd->child[i]) {
+            traverse(result, nd->child[i]);
+        }
+    }
+}
+
+// ==================== 查询函数实现 ====================
+
+std::priority_queue<std::pair<float, hnswlib::labeltype>> 
+RangeHNSW::queryRange(float *vecData, int rangeL, int rangeR, int k, int ef_s) {
+    if (!root) {
+        return std::priority_queue<std::pair<float, hnswlib::labeltype>>();
+    }
+    
+    node* highNode = findHighNode(root, rangeL, rangeR);
+    if (!highNode) {
+        return std::priority_queue<std::pair<float, hnswlib::labeltype>>();
+    }
+
+    // 1. 先用聚类找到好的候选入口点（如果有的话）
+    std::vector<tableint> clusterCandidates;
+    if (!clusters.empty()) {
+        clusterCandidates = findClusterCandidates(vecData, rangeL, rangeR, highNode);
+    }
+    
+    // 2. 合并原始入口点和聚类候选点
+    std::vector<tableint> ep_ids;
+    
+    // 添加原始算法的入口点
+    int belongL = highNode->keynum;
+    int belongR = highNode->keynum;
+    
+    for(int i = 0; i < highNode->keynum; i++) {
+        if (highNode->key[i] >= 0 && highNode->key[i] < eleCount) {
+            if(rangeL < valueList_[highNode->key[i]] ||
+               (rangeL == valueList_[highNode->key[i]] && 
+                highNode->child[i] && 
+                rangeL == valueList_[findRight(highNode->child[i])])){
+                belongL = i;
+                break;
+            }
+        }
+    }
+    for(int i = 0; i < highNode->keynum; i++) {
+        if (highNode->key[i] >= 0 && highNode->key[i] < eleCount) {
+            if(rangeR < valueList_[highNode->key[i]]){
+                belongR = i;
+                break;
+            }
+        }
+    }
+
+    int sp = -1;
+    if(belongL == belongR) {
+        if (highNode->entryPoint >= 0 && highNode->entryPoint < eleCount) {
+            ep_ids.push_back(highNode->entryPoint);
+        }
+    } else if(belongL == belongR - 1) {
+        // 处理左边界
+        if (highNode->child[belongL]) {
+            node* nodeL = highNode->child[belongL];
+            while(nodeL && nodeL->layer != 0 && nodeL->keynum > 0 && 
+                  nodeL->child[nodeL->keynum] &&
+                  valueList_[nodeL->key[nodeL->keynum - 1]] < rangeL) {
+                nodeL = nodeL->child[nodeL->keynum];
+            }
+            if (nodeL) {
+                tableint ep1;
+                if (nodeL->layer != 0 && nodeL->child[nodeL->keynum]) {
+                    ep1 = findEntry(vecData, nodeL, nodeL->child[nodeL->keynum]->entryPoint);
+                } else {
+                    ep1 = nodeL->entryPoint;
+                }
+                if (ep1 >= 0 && ep1 < eleCount) {
+                    ep_ids.push_back(ep1);
+                    searchLayer[ep1] = nodeL->layer;
+                }
+                if (belongL < highNode->keynum) {
+                    sp = highNode->key[belongL];
+                }
+            }
+        }
+
+        // 处理右边界
+        if (highNode->child[belongR]) {
+            node* nodeR = highNode->child[belongR];
+            while(nodeR && nodeR->layer != 0 && nodeR->keynum > 0 && 
+                  nodeR->child[0] &&
+                  valueList_[nodeR->key[0]] > rangeR) {
+                nodeR = nodeR->child[0];
+            }
+            if (nodeR) {
+                tableint ep2;
+                if (nodeR->layer != 0 && nodeR->child[0]) {
+                    ep2 = findEntry(vecData, nodeR, nodeR->child[0]->entryPoint);
+                } else {
+                    ep2 = nodeR->entryPoint;
+                }
+                if (ep2 >= 0 && ep2 < eleCount) {
+                    ep_ids.push_back(ep2);
+                    searchLayer[ep2] = nodeR->layer;
+                }
+            }
+        }
+    } else {
+        if (belongL + 1 <= belongR - 1) {
+            std::uniform_int_distribution<> distr(belongL + 1, belongR - 1);
+            int childIdx = distr(eng);
+            if (highNode->child[childIdx]) {
+                tableint high_ep = highNode->child[childIdx]->entryPoint;
+                if (high_ep >= 0 && high_ep < eleCount) {
+                    tableint ep = findEntry(vecData, highNode, high_ep);
+                    if (ep >= 0 && ep < eleCount) {
+                        ep_ids.push_back(ep);
+                        searchLayer[ep] = highNode->layer;
+                    }
+                }
+            }
+        }
+    }
+    
+    // 3. 添加聚类找到的候选点（只作为补充，不替代原始入口点）
+    for (auto cid : clusterCandidates) {
+        if (cid >= 0 && cid < eleCount && 
+            std::find(ep_ids.begin(), ep_ids.end(), cid) == ep_ids.end()) {
+            ep_ids.push_back(cid);
+            searchLayer[cid] = highNode->layer;
+            if (ep_ids.size() >= 5) break;  // 限制入口点数量
+        }
+    }
+
+    // 4. 如果还是没有入口点，使用根节点的入口点
+    if (ep_ids.empty() && root->entryPoint >= 0 && root->entryPoint < eleCount) {
+        ep_ids.push_back(root->entryPoint);
+    }
+
+    // 5. 执行原始的高召回率搜索算法
+    ResultHeap result = searchBaseLayer0(ep_ids, vecData, highNode->layer, rangeL, rangeR, ef_s, sp);
+
+    // 6. 输出结果
+    while(result.size() > k) result.pop();
+    std::priority_queue<std::pair<float, hnswlib::labeltype>> top;
+    while(!result.empty()) {
+        auto r = result.top();
+        result.pop();
+        if (r.second >= 0 && r.second < eleCount) {
+            top.push({r.first, keyList_[r.second]});
+        }
+    }
+    return top;
+}
+
+// ==================== 聚类相关函数实现 ====================
+
+void RangeHNSW::buildClusterIndex() {
+    if (!root) {
+        std::cerr << "Error: root is null, cannot build cluster index" << std::endl;
+        return;
+    }
+    
+    // 只在最上面的几层构建聚类
+    int startLevel = std::max(1, maxLayer - 2);
+    if (startLevel > maxLayer) startLevel = maxLayer;
+    
+    for (int level = startLevel; level <= maxLayer; level++) {
+        std::vector<tableint> levelPoints;
+        collectLevelPoints(root, level, levelPoints);
+        
+        if (levelPoints.size() < 10) continue;
+        
+        int numClusters = std::max(5, std::min(50, (int)(levelPoints.size() / 50)));
+        
+        buildClustersForLevel(levelPoints, numClusters, level);
+    }
+}
+
+void RangeHNSW::collectLevelPoints(RangeHNSW::node* nd, int targetLevel, std::vector<tableint>& points) {
+    if (!nd) return;
+    
+    if (nd->layer == targetLevel) {
+        std::vector<tableint> nodePoints;
+        traverse(nodePoints, nd);
+        points.insert(points.end(), nodePoints.begin(), nodePoints.end());
+    } else if (nd->layer > targetLevel) {
+        for (int i = 0; i <= nd->keynum; i++) {
+            if (nd->child[i]) {
+                collectLevelPoints(nd->child[i], targetLevel, points);
+            }
+        }
+    }
+}
+
+void RangeHNSW::buildClustersForLevel(const std::vector<tableint>& points, int k, int level) {
+    if (points.empty()) return;
+    
+    if (points.size() <= k) {
+        for (auto p : points) {
+            if (p >= 0 && p < eleCount) {
+                auto cluster = std::make_unique<Cluster>(dim);
+                cluster->centroid = getVector(p);
+                cluster->representatives.push_back(p);
+                cluster->radius = 0;
+                cluster->minAttr = cluster->maxAttr = valueList_[p];
+                cluster->level = level;
+                
+                int idx = clusters.size();
+                clusters.push_back(std::move(cluster));
+                levelClusters[level].push_back(idx);
+            }
+        }
+        return;
+    }
+    
+    // 使用k-means++初始化
+    std::vector<int> centers = kmeansPlusPlusInit(points, k);
+    
+    std::vector<std::vector<tableint>> assignments(k);
+    std::vector<std::vector<float>> centroids(k);
+    
+    for (int i = 0; i < k; i++) {
+        if (centers[i] >= 0 && centers[i] < eleCount) {
+            centroids[i] = getVector(centers[i]);
+        } else {
+            centroids[i].resize(dim, 0);
+        }
+    }
+    
+    const int maxIter = 10;
+    bool changed = true;
+    int iter = 0;
+    
+    while (changed && iter < maxIter) {
+        changed = false;
+        iter++;
+        
+        for (auto& a : assignments) a.clear();
+        
+        for (auto p : points) {
+            if (p < 0 || p >= eleCount) continue;
+            
+            int best = 0;
+            float bestDist = distL2(getVector(p), centroids[0]);
+            for (int j = 1; j < k; j++) {
+                float d = distL2(getVector(p), centroids[j]);
+                if (d < bestDist) {
+                    bestDist = d;
+                    best = j;
+                }
+            }
+            assignments[best].push_back(p);
+        }
+        
+        for (int j = 0; j < k; j++) {
+            if (assignments[j].size() < 2) continue;
+            
+            std::vector<float> newCentroid(dim, 0);
+            for (auto p : assignments[j]) {
+                if (p >= 0 && p < eleCount) {
+                    auto vec = getVector(p);
+                    for (int d = 0; d < dim; d++) {
+                        newCentroid[d] += vec[d];
+                    }
+                }
+            }
+            float invSize = 1.0f / assignments[j].size();
+            for (int d = 0; d < dim; d++) {
+                newCentroid[d] *= invSize;
+            }
+            
+            float diff = distL2(newCentroid, centroids[j]);
+            if (diff > 1e-3) {
+                changed = true;
+                centroids[j] = newCentroid;
+            }
+        }
+    }
+    
+    for (int j = 0; j < k; j++) {
+        if (assignments[j].size() < 2) continue;
+        
+        auto cluster = std::make_unique<Cluster>(dim);
+        cluster->centroid = centroids[j];
+        
+        float maxDist = 0;
+        std::vector<std::pair<float, tableint>> dists;
+        
+        for (auto p : assignments[j]) {
+            if (p < 0 || p >= eleCount) continue;
+            
+            float d = distL2(getVector(p), centroids[j]);
+            if (d > maxDist) maxDist = d;
+            dists.push_back({d, p});
+            
+            cluster->minAttr = std::min(cluster->minAttr, valueList_[p]);
+            cluster->maxAttr = std::max(cluster->maxAttr, valueList_[p]);
+        }
+        cluster->radius = maxDist;
+        
+        std::sort(dists.begin(), dists.end());
+        int numRep = std::min(2, (int)dists.size());
+        for (int r = 0; r < numRep; r++) {
+            cluster->representatives.push_back(dists[r].second);
+        }
+        
+        cluster->level = level;
+        
+        int idx = clusters.size();
+        clusters.push_back(std::move(cluster));
+        levelClusters[level].push_back(idx);
+    }
+}
+
+std::vector<int> RangeHNSW::kmeansPlusPlusInit(const std::vector<tableint>& points, int k) {
+    std::vector<int> centers;
+    std::vector<float> minDists(points.size(), std::numeric_limits<float>::max());
+    
+    std::uniform_int_distribution<> distr(0, points.size() - 1);
+    int firstIdx = distr(eng);
+    centers.push_back(points[firstIdx]);
+    
+    for (int i = 1; i < k; i++) {
+        float total = 0;
+        for (size_t j = 0; j < points.size(); j++) {
+            if (points[j] >= 0 && points[j] < eleCount && 
+                centers.back() >= 0 && centers.back() < eleCount) {
+                float d = distL2(getVector(points[j]), getVector(centers.back()));
+                minDists[j] = std::min(minDists[j], d);
+                total += minDists[j];
+            }
+        }
+        
+        if (total <= 0) {
+            centers.push_back(points[distr(eng)]);
+            continue;
+        }
+        
+        float r = std::uniform_real_distribution<float>(0, total)(eng);
+        float sum = 0;
+        for (size_t j = 0; j < points.size(); j++) {
+            sum += minDists[j];
+            if (sum >= r) {
+                centers.push_back(points[j]);
+                break;
+            }
+        }
+    }
+    
+    return centers;
+}
+
+std::vector<tableint> RangeHNSW::findClusterCandidates(float* queryVec, int rangeL, int rangeR, node* targetNode) {
+    std::vector<tableint> candidates;
+    if (clusters.empty() || !targetNode) return candidates;
+    
+    int startLevel = targetNode->layer;
+    if (startLevel < 0 || startLevel > maxLayer) startLevel = maxLayer;
+    
+    std::unordered_set<tableint> seen;
+    
+    for (int level = startLevel; level <= maxLayer; level++) {
+        auto it = levelClusters.find(level);
+        if (it == levelClusters.end()) continue;
+        
+        for (int idx : it->second) {
+            if (idx < 0 || idx >= clusters.size()) continue;
+            auto& cluster = clusters[idx];
+            
+            if (cluster->minAttr > rangeR || cluster->maxAttr < rangeL)
+                continue;
+            
+            float d = distL2(queryVec, cluster->centroid.data());
+            if (d <= cluster->radius * 1.5) {
+                for (auto rep : cluster->representatives) {
+                    if (rep >= 0 && rep < eleCount && 
+                        seen.find(rep) == seen.end() && 
+                        valueList_[rep] >= rangeL && 
+                        valueList_[rep] <= rangeR) {
+                        candidates.push_back(rep);
+                        seen.insert(rep);
+                        if (candidates.size() >= 3) break;
+                    }
+                }
+            }
+            if (candidates.size() >= 5) break;
+        }
+        if (candidates.size() >= 5) break;
+    }
+    
+    return candidates;
+}
+
+// ==================== B树相关辅助函数 ====================
+
+bool RangeHNSW::cmp(int a, int b) {
+    if (a < 0 || a >= eleCount || b < 0 || b >= eleCount) return a < b;
+    if(valueList_[a] != valueList_[b]) return valueList_[a] < valueList_[b];
+    return keyList_[a] < keyList_[b];
+}
+
+int RangeHNSW::findRight(RangeHNSW::node* nd) {
+    if (!nd) return -1;
+    if(nd->layer == 0) return nd->entryPoint;
+    if (nd->child[nd->keynum]) {
+        return findRight(nd->child[nd->keynum]);
+    }
+    return -1;
+}
+
+RangeHNSW::node* RangeHNSW::findHighNode(RangeHNSW::node* node, int rangeL, int rangeR) {
+    if (!node) return nullptr;
+    if(node->layer == 0) return node;
+    
+    int belongL = node->keynum;
+    int belongR = node->keynum;
+    
+    for(int i = 0; i < node->keynum; i++) {
+        if (node->key[i] >= 0 && node->key[i] < eleCount) {
+            if(rangeL < valueList_[node->key[i]] ||
+               (rangeL == valueList_[node->key[i]] && node->child[i] && 
+                rangeL == valueList_[findRight(node->child[i])])) {
+                belongL = i;
+                break;
+            }
+        }
+    }
+    for(int i = 0; i < node->keynum; i++) {
+        if (node->key[i] >= 0 && node->key[i] < eleCount) {
+            if(rangeR < valueList_[node->key[i]]) {
+                belongR = i;
+                break;
+            }
+        }
+    }
+    
+    belongL = std::max(0, std::min(belongL, node->keynum));
+    belongR = std::max(0, std::min(belongR, node->keynum));
+    
+    if(belongL == belongR && node->child[belongL]) {
+        return findHighNode(node->child[belongL], rangeL, rangeR);
+    }
+    return node;
+}
+
+int RangeHNSW::findPosition(RangeHNSW::node* nd, int value) {
+    if (!nd) return 0;
+    
+    for(int i = 0; i < nd->keynum; i++) {
+        if (nd->key[i] >= 0 && nd->key[i] < eleCount) {
+            if(value < valueList_[nd->key[i]]) {
+                return i;
+            }
+        }
+    }
+    return nd->keynum;
+}
+
+// ==================== 图搜索相关函数 ====================
+
+tableint RangeHNSW::findEntry(const void *query_data, RangeHNSW::node *nd, tableint currObj) const {
+    if (!nd || currObj < 0 || currObj >= eleCount) return currObj;
+    
+    float curdist = fstdistfunc_(query_data, getDataByInternalId(currObj), dist_func_param_);
+    int endLayer = nd->layer;
+    int startLayer = findEntryLayer(endLayer);
+    
+    for (int layer = startLayer; layer < endLayer; layer += skipLayer) {
+        bool changed = true;
+        while (changed) {
+            changed = false;
+            
+            for(int l = 0; l <= 0; l++) {
+                unsigned int *data = (unsigned int *)get_linklist(currObj, layer - l);
+                if (!data) continue;
+                
+                int size = getListCount(data);
+                if (size <= 0) continue;
+                
+                tableint *datal = (tableint *)(data + 1);
+                for (int i = 0; i < size; i++) {
+                    tableint cand = datal[i];
+                    if (cand < 0 || cand >= eleCount) continue;
+                    
+                    float d = fstdistfunc_(query_data, getDataByInternalId(cand), dist_func_param_);
+                    
+                    if (d < curdist) {
+                        curdist = d;
+                        currObj = cand;
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+    return currObj;
+}
+
+RangeHNSW::ResultHeap RangeHNSW::searchBaseLayer0(
+        std::vector<tableint> ep_ids, 
+        const void *data_point, 
+        int Layer, 
+        int rangeL, 
+        int rangeR, 
+        int ef, 
+        int splitPoint) {
+    
+    tag++;
+    if (tag == 0) tag = 1;
+    
+    ResultHeap top_candidates;
+    ResultHeap candidateSet;
+    
+    float lowerBound;
+    
+    for (auto ep_id : ep_ids) {
+        if (ep_id < 0 || ep_id >= eleCount || isDeleted[ep_id]) continue;
+        
+        float dist = fstdistfunc_(data_point, getDataByInternalId(ep_id), dist_func_param_);
+        candidateSet.emplace(-dist, ep_id);
+        visited_array[ep_id] = tag;
+        searchLayer[ep_id] = Layer;
+        
+        if (valueList_[ep_id] >= rangeL && valueList_[ep_id] <= rangeR) {
+            top_candidates.emplace(dist, ep_id);
+        }
+    }
+    
+    lowerBound = top_candidates.empty() ? std::numeric_limits<float>::max() : top_candidates.top().first;
+    
+    while (!candidateSet.empty()) {
+        auto curr = candidateSet.top();
+        candidateSet.pop();
+        
+        tableint curId = curr.second;
+        if (curId < 0 || curId >= eleCount) continue;
+        
+        short int layer = searchLayer[curId];
+        
+        // 探索所有层
+        for (int l = 0; l <= 1; l++) {
+            if (layer - l < 0) continue;
+            
+            auto* ll = get_linklist(curId, layer - l);
+            if (!ll) continue;
+            
+            int size = getListCount(ll);
+            if (size <= 0) continue;
+            
+            auto* neighbors = (tableint*)(ll + 1);
+            
+            for (int j = 0; j < size; j++) {
+                tableint nid = neighbors[j];
+                if (nid < 0 || nid >= eleCount) continue;
+                if (visited_array[nid] == tag) continue;
+                
+                visited_array[nid] = tag;
+                
+                float dist = fstdistfunc_(data_point, getDataByInternalId(nid), dist_func_param_);
+                
+                if (top_candidates.size() < ef || lowerBound > dist) {
+                    candidateSet.emplace(-dist, nid);
+                    searchLayer[nid] = layer;
+                    
+                    if (!isDeleted[nid] && valueList_[nid] >= rangeL && valueList_[nid] <= rangeR) {
+                        top_candidates.emplace(dist, nid);
+                        
+                        if (top_candidates.size() > ef) {
+                            top_candidates.pop();
+                        }
+                        
+                        if (!top_candidates.empty()) {
+                            lowerBound = top_candidates.top().first;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 如果splitPoint存在，探索更高层
+        if (splitPoint != -1) {
+            auto* ll = get_linklist(curId, Layer);
+            if (!ll) continue;
+            
+            int size = getListCount(ll);
+            if (size <= 0) continue;
+            
+            auto* neighbors = (tableint*)(ll + 1);
+            
+            for (int j = 0; j < size; j++) {
+                tableint nid = neighbors[j];
+                if (nid < 0 || nid >= eleCount) continue;
+                if (visited_array[nid] == tag) continue;
+                if (valueList_[nid] < rangeL || valueList_[nid] > rangeR) continue;
+                
+                visited_array[nid] = tag;
+                
+                float dist = fstdistfunc_(data_point, getDataByInternalId(nid), dist_func_param_);
+                
+                if (top_candidates.size() < ef || lowerBound > dist) {
+                    candidateSet.emplace(-dist, nid);
+                    searchLayer[nid] = layer;
+                    
+                    top_candidates.emplace(dist, nid);
+                    
+                    if (top_candidates.size() > ef) {
+                        top_candidates.pop();
+                    }
+                    
+                    if (!top_candidates.empty()) {
+                        lowerBound = top_candidates.top().first;
+                    }
+                }
+            }
+        }
+    }
+    
+    return top_candidates;
+}
+
+// ==================== 其他辅助函数 ====================
+
+int RangeHNSW::findEntryLayer(int Layer) const {
+    return Layer % skipLayer;
+}
+
+void RangeHNSW::getNeighborsByHeuristic2(ResultHeap &top_candidates, const size_t M) {
+    if (top_candidates.size() < M) return;
+    
+    std::priority_queue<std::pair<float, tableint>> queue_closest;
+    std::vector<std::pair<float, tableint>> return_list;
+    while (top_candidates.size() > 0) {
+        queue_closest.emplace(-top_candidates.top().first, top_candidates.top().second);
+        top_candidates.pop();
+    }
+    
+    while (queue_closest.size()) {
+        if (return_list.size() >= M) break;
+        std::pair<float, tableint> curent_pair = queue_closest.top();
+        float dist_to_query = -curent_pair.first;
+        queue_closest.pop();
+        bool good = true;
+        
+        for (std::pair<float, tableint> second_pair : return_list) {
+            float curdist = fstdistfunc_(getDataByInternalId(second_pair.second),
+                                         getDataByInternalId(curent_pair.second),
+                                         dist_func_param_);
+            if (curdist < dist_to_query) {
+                good = false;
+                break;
+            }
+        }
+        if (good) {
+            return_list.push_back(curent_pair);
+        }
+    }
+    
+    for (std::pair<float, tableint> curent_pair : return_list) {
+        top_candidates.emplace(-curent_pair.first, curent_pair.second);
+    }
+}
+
+RangeHNSW::ResultHeap RangeHNSW::searchBaseLayer(
+        const std::vector<tableint> &ep_ids, 
+        const void *data_point, 
+        int layer) {
+    
+    tag++;
+    if (tag == 0) tag = 1;
+    
+    ResultHeap top_candidates;
+    ResultHeap candidateSet;
+    
+    float lowerBound;
+    
+    for (auto ep_id : ep_ids) {
+        if (ep_id < 0 || ep_id >= eleCount || isDeleted[ep_id]) continue;
+        
+        float dist = fstdistfunc_(data_point, getDataByInternalId(ep_id), dist_func_param_);
+        top_candidates.emplace(dist, ep_id);
+        candidateSet.emplace(-dist, ep_id);
+        visited_array[ep_id] = tag;
+    }
+    
+    lowerBound = top_candidates.empty() ? std::numeric_limits<float>::max() : top_candidates.top().first;
+    
+    while (!candidateSet.empty()) {
+        auto curr = candidateSet.top();
+        if ((-curr.first) > lowerBound && top_candidates.size() >= ef_construction) {
+            break;
+        }
+        candidateSet.pop();
+        
+        tableint curId = curr.second;
+        if (curId < 0 || curId >= eleCount) continue;
+        
+        for (int i = 0; i <= 0; i++) {
+            if (layer - i < 0) break;
+            
+            auto* ll = get_linklist(curId, layer - i);
+            if (!ll) continue;
+            
+            int size = getListCount(ll);
+            if (size <= 0) continue;
+            
+            auto* neighbors = (tableint*)(ll + 1);
+            
+            for (int j = 0; j < size; j++) {
+                tableint nid = neighbors[j];
+                if (nid < 0 || nid >= eleCount) continue;
+                if (visited_array[nid] == tag) continue;
+                
+                visited_array[nid] = tag;
+                
+                float dist = fstdistfunc_(data_point, getDataByInternalId(nid), dist_func_param_);
+                
+                if (top_candidates.size() < ef_construction || lowerBound > dist) {
+                    candidateSet.emplace(-dist, nid);
+                    
+                    if (!isDeleted[nid]) {
+                        top_candidates.emplace(dist, nid);
+                        if (top_candidates.size() > ef_construction) {
+                            top_candidates.pop();
+                        }
+                        if (!top_candidates.empty()) {
+                            lowerBound = top_candidates.top().first;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    return top_candidates;
+}
+
+inline char *RangeHNSW::getDataByInternalId(tableint internal_id) const {
+    if (internal_id < 0 || internal_id >= eleCount) return nullptr;
+    return (char*)(vecData_ + internal_id * data_size_);
+}
+
+linklistsizeint *RangeHNSW::get_linklist(tableint internal_id, int layer) const {
+    if (internal_id < 0 || internal_id >= linklist.size()) return nullptr;
+    if (layer < 0 || layer > maxLayer) return nullptr;
+    if (!linklist[internal_id]) return nullptr;
+    
+    return (linklistsizeint *)(linklist[internal_id] + sizeLinkList * layer);
+}
+
+unsigned short int RangeHNSW::getListCount(linklistsizeint *ptr) const {
+    if (!ptr) return 0;
+    return *((unsigned short int *)ptr);
+}
+
+void RangeHNSW::setListCount(linklistsizeint *ptr, unsigned short int size) const {
+    if (!ptr) return;
+    *((unsigned short int*)(ptr)) = *((unsigned short int *)&size);
+}
+
+std::vector<float> RangeHNSW::getVector(tableint id) const {
+    std::vector<float> vec(dim, 0.0f);
+    if (id < 0 || id >= eleCount) return vec;
+    
+    float* data = (float*)(vecData_ + id * data_size_);
+    memcpy(vec.data(), data, dim * sizeof(float));
+    return vec;
+}
+
+float RangeHNSW::distL2(const float* a, const float* b) const {
+    if (!a || !b) return std::numeric_limits<float>::max();
+    
+    float dist = 0;
+    for (int i = 0; i < dim; i++) {
+        float diff = a[i] - b[i];
+        dist += diff * diff;
+    }
+    return dist;
+}
+
+float RangeHNSW::distL2(const std::vector<float>& a, const std::vector<float>& b) const {
+    float dist = 0;
+    for (int i = 0; i < dim; i++) {
+        float diff = a[i] - b[i];
+        dist += diff * diff;
+    }
+    return dist;
+}
+
+float RangeHNSW::distL2(const float* a, const std::vector<float>& b) const {
+    if (!a) return std::numeric_limits<float>::max();
+    
+    float dist = 0;
+    for (int i = 0; i < dim; i++) {
+        float diff = a[i] - b[i];
+        dist += diff * diff;
+    }
+    return dist;
+}
+
+// ==================== 占位函数实现 ====================
+
+void RangeHNSW::updateEntry(node *nd) {}
+void RangeHNSW::addPoint(int id) {}
+void RangeHNSW::erase(node *nd, int id) {}
+void RangeHNSW::refresh(node *nd, int refreshId) {}
+void RangeHNSW::mergeNode(node *nd, int mergeId) {}
+tableint RangeHNSW::insert(node* nd, int id) { return 0; }
+void RangeHNSW::splitNode(node *nd, int splitId) {}
+void RangeHNSW::refresh(node *nd) {}
+tableint RangeHNSW::connectEdges(const void *data_point, tableint cur_c, ResultHeap &top_candidates, int layer) { return 0; }
+void RangeHNSW::addPoint(int key,int value, char* data) {}
+void RangeHNSW::erase(int key) {}
+void RangeHNSW::resize(size_t newMaxN) {}
+
+#endif //RANGEHNSW_RANGEHNSW_HPP

@@ -3,9 +3,10 @@ project(Digra)
 
 set(CMAKE_CXX_STANDARD 17)
 
+add_definitions(-DUSE_SSE=0)
 set(CMAKE_TRY_COMPILE_TARGET_TYPE "STATIC_LIBRARY")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-SET( CMAKE_CXX_FLAGS  "-O3 -march=native -lrt -DHAVE_CXX0X -fpic -w -fopenmp -ftree-vectorize -ftree-vectorizer-verbose=0 -mavx -mavx512f" )
+SET( CMAKE_CXX_FLAGS  "-O0 -march=x86-64 -lrt -DHAVE_CXX0X -fpic -w -fopenmp -ftree-vectorize -ftree-vectorizer-verbose=0" )
 
 
 option(ENABLE_SSE "Enable SSE support" ON)

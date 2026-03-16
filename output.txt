@@ -1,0 +1,954 @@
+read begin
+
+=== Configuration ===
+baseNum: 10000
+queryNum: 1000
+dim: 128
+k: 10
+ef_con: 100
+m: 24
+=== Memory Usage [Program Start] ===
+  RSS: 3.140625 MB
+  System Total: 2063765.054688 MB
+  System Available: 2041149.726562 MB
+  Usage Ratio: 0.000152%
+  Memory Checkpoint [Before Data Loading]: 3.140625 MB (+0.000000 MB from start)
+  Memory Checkpoint [After Data Loading]: 3669.335938 MB (+3666.195312 MB from start)
+  [After Data Loading] Memory Detail:
+    Virtual: 3672.003906 MB
+    Resident: 3669.593750 MB
+    Data: 3666.320312 MB
+  Memory Checkpoint [After Index Building]: 3676.386719 MB (+3673.246094 MB from start)
+  [After Index Building] Memory Detail:
+    Virtual: 3678.542969 MB
+    Resident: 3676.386719 MB
+    Data: 3672.859375 MB
+
+build time: 0.269621 seconds
+buildOK
+
+=== Theoretical Memory Breakdown ===
+  Vectors: 4.882812 MB
+  Keys/Values: 0.076294 MB
+  Graph: 13.351440 MB
+  Total Theoretical: 18.310547 MB
+
+---------- 0.010000 ----------
+  Memory Checkpoint [Before Query Range 0.010000]: 3677.156250 MB (+3674.015625 MB from start)
+ef:25
+recall:0.694677
+time:0.809826
+qps:1234.832785
+ef:50
+recall:0.833044
+time:0.974012
+qps:1026.681289
+ef:75
+recall:0.931920
+time:1.092060
+qps:915.700489
+ef:100
+recall:0.973309
+time:1.175251
+qps:850.882404
+ef:125
+recall:0.973309
+time:1.195950
+qps:836.155521
+ef:150
+recall:0.973309
+time:1.191010
+qps:839.623222
+ef:175
+recall:0.973309
+time:1.190719
+qps:839.828774
+ef:200
+recall:0.973309
+time:1.190813
+qps:839.762588
+  Memory Checkpoint [During Query ef=200]: 3677.156250 MB (+3674.015625 MB from start)
+ef:225
+recall:0.973309
+time:1.188868
+qps:841.136462
+ef:250
+recall:0.973309
+time:1.188734
+qps:841.231092
+ef:275
+recall:0.973309
+time:1.190807
+qps:839.766398
+ef:300
+recall:0.973309
+time:1.190674
+qps:839.860605
+ef:325
+recall:0.973309
+time:1.195584
+qps:836.411663
+ef:350
+recall:0.973309
+time:1.191018
+qps:839.617731
+ef:375
+recall:0.973309
+time:1.187529
+qps:842.084710
+ef:400
+recall:0.973309
+time:1.186836
+qps:842.576195
+  Memory Checkpoint [During Query ef=400]: 3677.156250 MB (+3674.015625 MB from start)
+ef:425
+recall:0.973309
+time:1.191689
+qps:839.144810
+ef:450
+recall:0.973309
+time:1.188453
+qps:841.429958
+ef:475
+recall:0.973309
+time:1.191488
+qps:839.286478
+ef:500
+recall:0.973309
+time:1.191063
+qps:839.585990
+ef:525
+recall:0.973309
+time:1.197366
+qps:835.166185
+ef:550
+recall:0.973309
+time:1.191624
+qps:839.191229
+ef:575
+recall:0.973309
+time:1.187137
+qps:842.362767
+ef:600
+recall:0.973309
+time:1.185136
+qps:843.784686
+  Memory Checkpoint [During Query ef=600]: 3677.156250 MB (+3674.015625 MB from start)
+ef:625
+recall:0.973309
+time:1.186964
+qps:842.485267
+ef:650
+recall:0.973309
+time:1.191712
+qps:839.129209
+ef:675
+recall:0.973309
+time:1.191380
+qps:839.362675
+ef:700
+recall:0.973309
+time:1.191766
+qps:839.091016
+ef:725
+recall:0.973309
+time:1.196552
+qps:835.734506
+ef:750
+recall:0.973309
+time:1.188678
+qps:841.270824
+ef:775
+recall:0.973309
+time:1.191336
+qps:839.393573
+ef:800
+recall:0.973309
+time:1.214278
+qps:823.534880
+  Memory Checkpoint [During Query ef=800]: 3677.156250 MB (+3674.015625 MB from start)
+ef:825
+recall:0.973309
+time:1.191573
+qps:839.227006
+ef:850
+recall:0.973309
+time:1.191273
+qps:839.438392
+ef:875
+recall:0.973309
+time:1.187222
+qps:842.302267
+ef:900
+recall:0.973309
+time:1.185723
+qps:843.367398
+ef:925
+recall:0.973309
+time:1.192209
+qps:838.778847
+ef:950
+recall:0.973309
+time:1.191024
+qps:839.613879
+ef:975
+recall:0.973309
+time:1.194943
+qps:836.860073
+ef:1000
+recall:0.973309
+time:1.701439
+qps:587.737964
+  Memory Checkpoint [During Query ef=1000]: 3677.414062 MB (+3674.273438 MB from start)
+  Memory Checkpoint [After Query Range 0.010000]: 3677.414062 MB (+3674.273438 MB from start)
+  [After Range 0.010000] Memory Detail:
+    Virtual: 3679.574219 MB
+    Resident: 3677.414062 MB
+    Data: 3673.890625 MB
+
+---------- 0.050000 ----------
+  Memory Checkpoint [Before Query Range 0.050000]: 3680.277344 MB (+3677.136719 MB from start)
+ef:25
+recall:0.450218
+time:0.589809
+qps:1695.463487
+ef:50
+recall:0.539515
+time:0.723188
+qps:1382.765854
+ef:75
+recall:0.599801
+time:0.824527
+qps:1212.817181
+ef:100
+recall:0.644590
+time:0.906154
+qps:1103.564975
+ef:125
+recall:0.686379
+time:0.972100
+qps:1028.700875
+ef:150
+recall:0.720471
+time:1.039808
+qps:961.716365
+ef:175
+recall:0.751863
+time:1.093787
+qps:914.254690
+ef:200
+recall:0.775358
+time:1.148138
+qps:870.975134
+  Memory Checkpoint [During Query ef=200]: 3680.351562 MB (+3677.210938 MB from start)
+ef:225
+recall:0.802751
+time:1.190569
+qps:839.934675
+ef:250
+recall:0.821746
+time:1.233932
+qps:810.417151
+ef:275
+recall:0.841542
+time:1.286683
+qps:777.192036
+ef:300
+recall:0.858437
+time:1.329048
+qps:752.418055
+ef:325
+recall:0.874633
+time:1.364675
+qps:732.775395
+ef:350
+recall:0.894529
+time:1.401443
+qps:713.550482
+ef:375
+recall:0.915424
+time:1.432715
+qps:697.975300
+ef:400
+recall:0.934519
+time:1.467606
+qps:681.381757
+  Memory Checkpoint [During Query ef=400]: 3680.351562 MB (+3677.210938 MB from start)
+ef:425
+recall:0.950115
+time:1.497449
+qps:667.802398
+ef:450
+recall:0.960712
+time:1.527576
+qps:654.631846
+ef:475
+recall:0.972110
+time:1.552646
+qps:644.061859
+ef:500
+recall:0.973909
+time:1.568867
+qps:637.402519
+ef:525
+recall:0.973909
+time:1.568718
+qps:637.463211
+ef:550
+recall:0.973909
+time:1.569005
+qps:637.346769
+ef:575
+recall:0.973909
+time:1.569384
+qps:637.192490
+ef:600
+recall:0.973909
+time:1.568661
+qps:637.486327
+  Memory Checkpoint [During Query ef=600]: 3680.351562 MB (+3677.210938 MB from start)
+ef:625
+recall:0.973909
+time:1.569974
+qps:636.953140
+ef:650
+recall:0.973909
+time:1.568697
+qps:637.471597
+ef:675
+recall:0.973909
+time:1.569871
+qps:636.995208
+ef:700
+recall:0.973909
+time:1.568985
+qps:637.354777
+ef:725
+recall:0.973909
+time:1.570005
+qps:636.940817
+ef:750
+recall:0.973909
+time:1.568986
+qps:637.354338
+ef:775
+recall:0.973909
+time:1.568794
+qps:637.432461
+ef:800
+recall:0.973909
+time:1.568907
+qps:637.386353
+  Memory Checkpoint [During Query ef=800]: 3680.351562 MB (+3677.210938 MB from start)
+ef:825
+recall:0.973909
+time:1.570870
+qps:636.590089
+ef:850
+recall:0.973909
+time:1.568991
+qps:637.352314
+ef:875
+recall:0.973909
+time:1.568696
+qps:637.471965
+ef:900
+recall:0.973909
+time:1.569695
+qps:637.066583
+ef:925
+recall:0.973909
+time:1.569419
+qps:637.178618
+ef:950
+recall:0.973909
+time:1.570001
+qps:636.942136
+ef:975
+recall:0.973909
+time:1.568729
+qps:637.458632
+ef:1000
+recall:0.973909
+time:1.569550
+qps:637.125346
+  Memory Checkpoint [During Query ef=1000]: 3680.351562 MB (+3677.210938 MB from start)
+  Memory Checkpoint [After Query Range 0.050000]: 3680.351562 MB (+3677.210938 MB from start)
+  [After Range 0.050000] Memory Detail:
+    Virtual: 3682.410156 MB
+    Resident: 3680.351562 MB
+    Data: 3676.726562 MB
+
+---------- 0.100000 ----------
+  Memory Checkpoint [Before Query Range 0.100000]: 3684.234375 MB (+3681.093750 MB from start)
+ef:25
+recall:0.366613
+time:0.522978
+qps:1912.125526
+ef:50
+recall:0.443718
+time:0.656628
+qps:1522.932994
+ef:75
+recall:0.498021
+time:0.753359
+qps:1327.389101
+ef:100
+recall:0.538416
+time:0.836950
+qps:1194.814809
+ef:125
+recall:0.568108
+time:0.905849
+qps:1103.936285
+ef:150
+recall:0.594802
+time:0.980691
+qps:1019.688990
+ef:175
+recall:0.617296
+time:1.041067
+qps:960.552521
+ef:200
+recall:0.641890
+time:1.097155
+qps:911.448257
+  Memory Checkpoint [During Query ef=200]: 3684.234375 MB (+3681.093750 MB from start)
+ef:225
+recall:0.660686
+time:1.145032
+qps:873.337969
+ef:250
+recall:0.677981
+time:1.194551
+qps:837.134804
+ef:275
+recall:0.698077
+time:1.250550
+qps:799.648173
+ef:300
+recall:0.713973
+time:1.294746
+qps:772.352550
+ef:325
+recall:0.728969
+time:1.335656
+qps:748.695661
+ef:350
+recall:0.743466
+time:1.375297
+qps:727.115890
+ef:375
+recall:0.755962
+time:1.413308
+qps:707.559892
+ef:400
+recall:0.768359
+time:1.452345
+qps:688.541785
+  Memory Checkpoint [During Query ef=400]: 3684.234375 MB (+3681.093750 MB from start)
+ef:425
+recall:0.782256
+time:1.484206
+qps:673.760727
+ef:450
+recall:0.793953
+time:1.521809
+qps:657.112721
+ef:475
+recall:0.803851
+time:1.550915
+qps:644.780506
+ef:500
+recall:0.814748
+time:1.584386
+qps:631.159394
+ef:525
+recall:0.825046
+time:1.637973
+qps:610.510527
+ef:550
+recall:0.835843
+time:1.669746
+qps:598.893333
+ef:575
+recall:0.846240
+time:1.698860
+qps:588.630014
+ef:600
+recall:0.857038
+time:1.730380
+qps:577.907675
+  Memory Checkpoint [During Query ef=600]: 3684.234375 MB (+3681.093750 MB from start)
+ef:625
+recall:0.864136
+time:1.756470
+qps:569.323581
+ef:650
+recall:0.874434
+time:1.788256
+qps:559.204153
+ef:675
+recall:0.881932
+time:1.813316
+qps:551.475744
+ef:700
+recall:0.888130
+time:1.838696
+qps:543.863834
+ef:725
+recall:0.899028
+time:1.866383
+qps:535.795816
+ef:750
+recall:0.908725
+time:1.889625
+qps:529.205628
+ef:775
+recall:0.919223
+time:1.916139
+qps:521.882675
+ef:800
+recall:0.927321
+time:1.940962
+qps:515.208561
+  Memory Checkpoint [During Query ef=800]: 3684.234375 MB (+3681.093750 MB from start)
+ef:825
+recall:0.936118
+time:1.962003
+qps:509.683239
+ef:850
+recall:0.945016
+time:1.987099
+qps:503.246206
+ef:875
+recall:0.954814
+time:2.009184
+qps:497.714531
+ef:900
+recall:0.964312
+time:2.032531
+qps:491.997480
+ef:925
+recall:0.969210
+time:2.051872
+qps:487.359734
+ef:950
+recall:0.973709
+time:2.071438
+qps:482.756357
+ef:975
+recall:0.975509
+time:2.084691
+qps:479.687493
+ef:1000
+recall:0.976209
+time:2.087631
+qps:479.011859
+  Memory Checkpoint [During Query ef=1000]: 3684.234375 MB (+3681.093750 MB from start)
+  Memory Checkpoint [After Query Range 0.100000]: 3684.234375 MB (+3681.093750 MB from start)
+  [After Range 0.100000] Memory Detail:
+    Virtual: 3686.382812 MB
+    Resident: 3684.234375 MB
+    Data: 3680.699219 MB
+
+---------- 0.200000 ----------
+  Memory Checkpoint [Before Query Range 0.200000]: 3691.964844 MB (+3688.824219 MB from start)
+ef:25
+recall:0.302509
+time:0.479572
+qps:2085.190973
+ef:50
+recall:0.363613
+time:0.611619
+qps:1635.004820
+ef:75
+recall:0.408116
+time:0.710857
+qps:1406.753276
+ef:100
+recall:0.441918
+time:0.798575
+qps:1252.230967
+ef:125
+recall:0.469119
+time:0.868326
+qps:1151.640665
+ef:150
+recall:0.493821
+time:0.949032
+qps:1053.705779
+ef:175
+recall:0.516121
+time:1.010603
+qps:989.508252
+ef:200
+recall:0.536116
+time:1.077361
+qps:928.193911
+  Memory Checkpoint [During Query ef=200]: 3691.964844 MB (+3688.824219 MB from start)
+ef:225
+recall:0.551212
+time:1.128939
+qps:885.787715
+ef:250
+recall:0.567508
+time:1.186079
+qps:843.114310
+ef:275
+recall:0.578006
+time:1.250179
+qps:799.885420
+ef:300
+recall:0.593302
+time:1.303782
+qps:766.999200
+ef:325
+recall:0.605099
+time:1.350105
+qps:740.683076
+ef:350
+recall:0.617296
+time:1.399352
+qps:714.616669
+ef:375
+recall:0.628494
+time:1.441312
+qps:693.812435
+ef:400
+recall:0.639591
+time:1.491452
+qps:670.487455
+  Memory Checkpoint [During Query ef=400]: 3691.964844 MB (+3688.824219 MB from start)
+ef:425
+recall:0.649189
+time:1.527896
+qps:654.494743
+ef:450
+recall:0.662685
+time:1.574813
+qps:634.996146
+ef:475
+recall:0.672183
+time:1.609434
+qps:621.336519
+ef:500
+recall:0.682280
+time:1.652984
+qps:604.966655
+ef:525
+recall:0.691878
+time:1.710466
+qps:584.636026
+ef:550
+recall:0.700776
+time:1.751704
+qps:570.872683
+ef:575
+recall:0.707674
+time:1.786050
+qps:559.894803
+ef:600
+recall:0.716072
+time:1.822047
+qps:548.833229
+  Memory Checkpoint [During Query ef=600]: 3691.964844 MB (+3688.824219 MB from start)
+ef:625
+recall:0.724270
+time:1.853892
+qps:539.405740
+ef:650
+recall:0.731768
+time:1.891658
+qps:528.636703
+ef:675
+recall:0.738667
+time:1.921536
+qps:520.417117
+ef:700
+recall:0.745565
+time:1.956035
+qps:511.238189
+ef:725
+recall:0.751464
+time:1.987183
+qps:503.225029
+ef:750
+recall:0.758062
+time:2.018395
+qps:495.443050
+ef:775
+recall:0.764460
+time:2.051778
+qps:487.382130
+ef:800
+recall:0.769659
+time:2.085080
+qps:479.597937
+  Memory Checkpoint [During Query ef=800]: 3691.964844 MB (+3688.824219 MB from start)
+ef:825
+recall:0.775958
+time:2.110771
+qps:473.760533
+ef:850
+recall:0.781456
+time:2.143047
+qps:466.625306
+ef:875
+recall:0.787555
+time:2.166793
+qps:461.511472
+ef:900
+recall:0.792554
+time:2.201581
+qps:454.219101
+ef:925
+recall:0.797452
+time:2.225496
+qps:449.338116
+ef:950
+recall:0.803251
+time:2.253729
+qps:443.709105
+ef:975
+recall:0.809749
+time:2.279274
+qps:438.736185
+ef:1000
+recall:0.815148
+time:2.308582
+qps:433.166342
+  Memory Checkpoint [During Query ef=1000]: 3691.964844 MB (+3688.824219 MB from start)
+  Memory Checkpoint [After Query Range 0.200000]: 3691.964844 MB (+3688.824219 MB from start)
+  [After Range 0.200000] Memory Detail:
+    Virtual: 3694.234375 MB
+    Resident: 3691.964844 MB
+    Data: 3688.550781 MB
+
+---------- 0.400000 ----------
+  Memory Checkpoint [Before Query Range 0.400000]: 3707.687500 MB (+3704.546875 MB from start)
+ef:25
+recall:0.264207
+time:0.457788
+qps:2184.417174
+ef:50
+recall:0.309210
+time:0.595499
+qps:1679.264878
+ef:75
+recall:0.342612
+time:0.698225
+qps:1432.202543
+ef:100
+recall:0.369613
+time:0.791718
+qps:1263.075370
+ef:125
+recall:0.390215
+time:0.864635
+qps:1156.557077
+ef:150
+recall:0.408616
+time:0.956662
+qps:1045.301453
+ef:175
+recall:0.424917
+time:1.023089
+qps:977.432306
+ef:200
+recall:0.442618
+time:1.094134
+qps:913.964914
+  Memory Checkpoint [During Query ef=200]: 3707.687500 MB (+3704.546875 MB from start)
+ef:225
+recall:0.455419
+time:1.152272
+qps:867.850531
+ef:250
+recall:0.469119
+time:1.218041
+qps:820.990738
+ef:275
+recall:0.479720
+time:1.288764
+qps:775.937445
+ef:300
+recall:0.491821
+time:1.351453
+qps:739.944330
+ef:325
+recall:0.502121
+time:1.403470
+qps:712.519832
+ef:350
+recall:0.510522
+time:1.461467
+qps:684.244195
+ef:375
+recall:0.518920
+time:1.508270
+qps:663.011128
+ef:400
+recall:0.527518
+time:1.570039
+qps:636.926699
+  Memory Checkpoint [During Query ef=400]: 3707.687500 MB (+3704.546875 MB from start)
+ef:425
+recall:0.537816
+time:1.612712
+qps:620.073397
+ef:450
+recall:0.544514
+time:1.671054
+qps:598.424632
+ef:475
+recall:0.553412
+time:1.710146
+qps:584.745278
+ef:500
+recall:0.560610
+time:1.763545
+qps:567.039814
+ef:525
+recall:0.566909
+time:1.830548
+qps:546.284382
+ef:550
+recall:0.574107
+time:1.883929
+qps:530.805475
+ef:575
+recall:0.580105
+time:1.926136
+qps:519.174079
+ef:600
+recall:0.587704
+time:1.974485
+qps:506.461280
+  Memory Checkpoint [During Query ef=600]: 3707.687500 MB (+3704.546875 MB from start)
+ef:625
+recall:0.593002
+time:2.012565
+qps:496.878417
+ef:650
+recall:0.599001
+time:2.061600
+qps:485.060225
+ef:675
+recall:0.605099
+time:2.098302
+qps:476.575903
+ef:700
+recall:0.611998
+time:2.144588
+qps:466.290116
+ef:725
+recall:0.619696
+time:2.179010
+qps:458.924084
+ef:750
+recall:0.625994
+time:2.224529
+qps:449.533352
+ef:775
+recall:0.631093
+time:2.262630
+qps:441.963608
+ef:800
+recall:0.636392
+time:2.307550
+qps:433.360060
+  Memory Checkpoint [During Query ef=800]: 3707.687500 MB (+3704.546875 MB from start)
+ef:825
+recall:0.642790
+time:2.337404
+qps:427.824972
+ef:850
+recall:0.649488
+time:2.382991
+qps:419.640681
+ef:875
+recall:0.654287
+time:2.412117
+qps:414.573523
+ef:900
+recall:0.658486
+time:2.458852
+qps:406.693900
+ef:925
+recall:0.662685
+time:2.488734
+qps:401.810776
+ef:950
+recall:0.667784
+time:2.529007
+qps:395.412132
+ef:975
+recall:0.671983
+time:2.559285
+qps:390.734109
+ef:1000
+recall:0.675682
+time:2.597210
+qps:385.028546
+  Memory Checkpoint [During Query ef=1000]: 3707.687500 MB (+3704.546875 MB from start)
+  Memory Checkpoint [After Query Range 0.400000]: 3707.687500 MB (+3704.546875 MB from start)
+  [After Range 0.400000] Memory Detail:
+    Virtual: 3709.960938 MB
+    Resident: 3707.687500 MB
+    Data: 3704.277344 MB
+
+==================================================
+
+=== Memory Usage Summary ===
+  Start: 3.140625 MB
+  Peak: 3707.687500 MB
+  Peak Increase: 3704.546875 MB
+  Checkpoints:
+    Before Data Loading: 3.140625 MB (+0.000000 MB)
+    After Data Loading: 3669.335938 MB (+3666.195312 MB)
+    After Index Building: 3676.386719 MB (+7.050781 MB)
+    Before Query Range 0.010000: 3677.156250 MB (+0.769531 MB)
+    During Query ef=200: 3677.156250 MB (+0.000000 MB)
+    During Query ef=400: 3677.156250 MB (+0.000000 MB)
+    During Query ef=600: 3677.156250 MB (+0.000000 MB)
+    During Query ef=800: 3677.156250 MB (+0.000000 MB)
+    During Query ef=1000: 3677.414062 MB (+0.257812 MB)
+    After Query Range 0.010000: 3677.414062 MB (+0.000000 MB)
+    Before Query Range 0.050000: 3680.277344 MB (+2.863281 MB)
+    During Query ef=200: 3680.351562 MB (+0.074219 MB)
+    During Query ef=400: 3680.351562 MB (+0.000000 MB)
+    During Query ef=600: 3680.351562 MB (+0.000000 MB)
+    During Query ef=800: 3680.351562 MB (+0.000000 MB)
+    During Query ef=1000: 3680.351562 MB (+0.000000 MB)
+    After Query Range 0.050000: 3680.351562 MB (+0.000000 MB)
+    Before Query Range 0.100000: 3684.234375 MB (+3.882812 MB)
+    During Query ef=200: 3684.234375 MB (+0.000000 MB)
+    During Query ef=400: 3684.234375 MB (+0.000000 MB)
+    During Query ef=600: 3684.234375 MB (+0.000000 MB)
+    During Query ef=800: 3684.234375 MB (+0.000000 MB)
+    During Query ef=1000: 3684.234375 MB (+0.000000 MB)
+    After Query Range 0.100000: 3684.234375 MB (+0.000000 MB)
+    Before Query Range 0.200000: 3691.964844 MB (+7.730469 MB)
+    During Query ef=200: 3691.964844 MB (+0.000000 MB)
+    During Query ef=400: 3691.964844 MB (+0.000000 MB)
+    During Query ef=600: 3691.964844 MB (+0.000000 MB)
+    During Query ef=800: 3691.964844 MB (+0.000000 MB)
+    During Query ef=1000: 3691.964844 MB (+0.000000 MB)
+    After Query Range 0.200000: 3691.964844 MB (+0.000000 MB)
+    Before Query Range 0.400000: 3707.687500 MB (+15.722656 MB)
+    During Query ef=200: 3707.687500 MB (+0.000000 MB)
+    During Query ef=400: 3707.687500 MB (+0.000000 MB)
+    During Query ef=600: 3707.687500 MB (+0.000000 MB)
+    During Query ef=800: 3707.687500 MB (+0.000000 MB)
+    During Query ef=1000: 3707.687500 MB (+0.000000 MB)
+    After Query Range 0.400000: 3707.687500 MB (+0.000000 MB)
+=== Memory Usage [Program End] ===
+  RSS: 3707.687500 MB
+  System Total: 2063765.054688 MB
+  System Available: 2037435.003906 MB
+  Usage Ratio: 0.179656%
+
+=== Final Statistics ===
+Total queries processed: 200000
+Peak memory usage: 3707.687500 MB
