@@ -276,7 +276,7 @@ private:
     // KMeans clustering using L2 distance
     // clusterSize ~= log(N), so numClusters ~= N / log(N)
     // -------------------------------------------------------
-    ClusterInfo kmeansCluster(const std::vector<tableint>& pointIds, int clusterSize, int maxIter = 20) {
+    ClusterInfo kmeansCluster(const std::vector<tableint>& pointIds, int clusterSize, int maxIter = 5) {
         int n = (int)pointIds.size();
         int K = std::max(1, n / std::max(1, clusterSize));
 
@@ -1030,17 +1030,17 @@ private:
                     const ClusterInfo& clInfo = layerClusters[curLayer];
                     int clusterId = (curNodeNum < (tableint)clInfo.point2cluster.size())
                                         ? (int)clInfo.point2cluster[curNodeNum] : 0;
+                    const auto& nbList = clusterLinklist[curLayer][clusterId];
 #ifdef USE_SSE
-                    if (!clusterLinklist[curLayer][clusterId].empty()) {
-                        int fNb = (int)clusterLinklist[curLayer][clusterId][0];
-                        if (!clInfo.members[fNb].empty()) {
-                            _mm_prefetch((char*)(visited_array + clInfo.members[fNb][0]), _MM_HINT_T0);
-                            _mm_prefetch(getDataByInternalId(clInfo.members[fNb][0]), _MM_HINT_T0);
-                        }
+                    if (!clInfo.members[clusterId].empty()) {
+                        _mm_prefetch((char*)(visited_array + clInfo.members[clusterId][0]), _MM_HINT_T0);
+                        _mm_prefetch(getDataByInternalId(clInfo.members[clusterId][0]), _MM_HINT_T0);
                     }
 #endif
-                    for (tableint nbCluster : clusterLinklist[curLayer][clusterId]) {
-                        const auto& members = clInfo.members[(int)nbCluster];
+                    // Expand own cluster (ci=-1) then neighbor clusters (ci>=0)
+                    for (int ci = -1; ci < (int)nbList.size(); ci++) {
+                        int expandCid = (ci < 0) ? clusterId : (int)nbList[ci];
+                        const auto& members = clInfo.members[expandCid];
 #ifdef USE_SSE
                         if (!members.empty()) {
                             _mm_prefetch((char*)(visited_array + members[0]), _MM_HINT_T0);
@@ -1062,7 +1062,7 @@ private:
                             float dist1 = fstdistfunc_(data_point, currObj1, dist_func_param_);
                             if (top_candidates.size() < (size_t)ef || lowerBound > dist1) {
                                 candidateSet.emplace(-dist1, candidate_id);
-                                searchLayer[candidate_id] = (short int)curLayer;
+                                searchLayer[candidate_id] = layer;  // use parent's layer, not curLayer
 #ifdef USE_SSE
                                 _mm_prefetch(getDataByInternalId(candidateSet.top().second), _MM_HINT_T0);
 #endif
@@ -1092,17 +1092,17 @@ private:
                     const ClusterInfo& clInfo = layerClusters[clLayer];
                     int clusterId = (curNodeNum < (tableint)clInfo.point2cluster.size())
                                         ? (int)clInfo.point2cluster[curNodeNum] : 0;
+                    const auto& nbList = clusterLinklist[clLayer][clusterId];
 #ifdef USE_SSE
-                    if (!clusterLinklist[clLayer][clusterId].empty()) {
-                        int fNb = (int)clusterLinklist[clLayer][clusterId][0];
-                        if (!clInfo.members[fNb].empty()) {
-                            _mm_prefetch((char*)(visited_array + clInfo.members[fNb][0]), _MM_HINT_T0);
-                            _mm_prefetch(getDataByInternalId(clInfo.members[fNb][0]), _MM_HINT_T0);
-                        }
+                    if (!clInfo.members[clusterId].empty()) {
+                        _mm_prefetch((char*)(visited_array + clInfo.members[clusterId][0]), _MM_HINT_T0);
+                        _mm_prefetch(getDataByInternalId(clInfo.members[clusterId][0]), _MM_HINT_T0);
                     }
 #endif
-                    for (tableint nbCluster : clusterLinklist[clLayer][clusterId]) {
-                        const auto& members = clInfo.members[(int)nbCluster];
+                    // Expand own cluster (ci=-1) then neighbor clusters (ci>=0)
+                    for (int ci = -1; ci < (int)nbList.size(); ci++) {
+                        int expandCid = (ci < 0) ? clusterId : (int)nbList[ci];
+                        const auto& members = clInfo.members[expandCid];
 #ifdef USE_SSE
                         if (!members.empty()) {
                             _mm_prefetch((char*)(visited_array + members[0]), _MM_HINT_T0);
@@ -1192,16 +1192,20 @@ private:
                     }
                 }
 
-                // Phase 2: expand best cluster to find nearest actual point
-                const auto& bestMembers = clInfo.members[curCluster];
-                for (size_t j = 0; j < bestMembers.size(); j++) {
-                    tableint member = bestMembers[j];
+                // Phase 2: expand best cluster AND its neighbors to find nearest actual point
+                const auto& nbList = clusterLinklist[layer][curCluster];
+                for (int ci = -1; ci < (int)nbList.size(); ci++) {
+                    int expandCid = (ci < 0) ? curCluster : (int)nbList[ci];
+                    const auto& cMembers = clInfo.members[expandCid];
+                    for (size_t j = 0; j < cMembers.size(); j++) {
+                        tableint member = cMembers[j];
 #ifdef USE_SSE
-                    if (j + 1 < bestMembers.size())
-                        _mm_prefetch(getDataByInternalId(bestMembers[j + 1]), _MM_HINT_T0);
+                        if (j + 1 < cMembers.size())
+                            _mm_prefetch(getDataByInternalId(cMembers[j + 1]), _MM_HINT_T0);
 #endif
-                    float d = fstdistfunc_(query_data, getDataByInternalId(member), dist_func_param_);
-                    if (d < curdist) { curdist = d; currObj = member; }
+                        float d = fstdistfunc_(query_data, getDataByInternalId(member), dist_func_param_);
+                        if (d < curdist) { curdist = d; currObj = member; }
+                    }
                 }
 
             } else {
