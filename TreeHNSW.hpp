@@ -560,7 +560,8 @@ private:
             qid = nxtqid;
         }
         std::cout<<"edge num:"<<numEdges<<std::endl;
-        std::cout<<"cluster edges (avg per cluster):"<<numEdges*1.0/std::max(1,(int)clusterLayers[0].numClusters)<<std::endl;
+        if(!clusterLayers.empty() && clusterLayers[0].numClusters > 0)
+            std::cout<<"cluster edges (avg per cluster):"<<numEdges*1.0/clusterLayers[0].numClusters<<std::endl;
         std::cout<<"cluster size target:"<<clusterSize<<std::endl;
         return q[qid].front().second;
     }
@@ -591,9 +592,8 @@ private:
                 newRoot->child[0] = root;
                 root = newRoot;
                 // With clustering, higher-layer edges are cluster-level.
-                // Copy cluster assignments for the new layer
+                // Set up cluster for new top layer
                 if(newRoot->layer <= maxLayer && newRoot->layer >= 1){
-                    ClusterLayer& clOld = clusterLayers[newRoot->layer - 2];
                     ClusterLayer& clNew = clusterLayers[newRoot->layer - 1];
                     // Assign all points to a single cluster at new top layer
                     for(int i = 0; i < (int)eleCount; i++){
@@ -1278,9 +1278,11 @@ private:
                               ResultHeap& candidateSet, ResultHeap& top_candidates,
                               float& lowerBound) {
         if(layer < 1 || layer > maxLayer) return;
+        if(layer - 1 >= (int)clusterLayers.size()) return;
         const ClusterLayer& cl = clusterLayers[layer - 1];
+        if(pointId >= (int)cl.pointToCluster.size()) return;
         int clId = cl.pointToCluster[pointId];
-        if(clId < 0 || clId >= cl.numClusters) return;
+        if(clId < 0 || clId >= (int)cl.members.size()) return;
 
         const std::vector<tableint>& members = cl.members[clId];
         for(tableint member : members){
@@ -1348,12 +1350,16 @@ private:
             return (linklistsizeint *) linklist[internal_id];
         }
         // Layer >= 1: route through cluster edge list
-        const ClusterLayer& cl = clusterLayers[layer - 1];
-        int clId = cl.pointToCluster[internal_id];
-        if(clId >= 0 && clId < cl.numClusters){
-            return (linklistsizeint *) cl.edgeList[clId];
+        if(layer - 1 < (int)clusterLayers.size()){
+            const ClusterLayer& cl = clusterLayers[layer - 1];
+            if(internal_id < (int)cl.pointToCluster.size()){
+                int clId = cl.pointToCluster[internal_id];
+                if(clId >= 0 && clId < (int)cl.edgeList.size()){
+                    return (linklistsizeint *) cl.edgeList[clId];
+                }
+            }
         }
-        // Fallback: return layer-0 (empty edges)
+        // Fallback: return layer-0 edges
         return (linklistsizeint *) linklist[internal_id];
     }
 
