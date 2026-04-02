@@ -1,0 +1,3 @@
+/home/runner/work/DIGRA/DIGRA/build/CMakeFiles/Digra.dir
+/home/runner/work/DIGRA/DIGRA/build/CMakeFiles/edit_cache.dir
+/home/runner/work/DIGRA/DIGRA/build/CMakeFiles/rebuild_cache.dir

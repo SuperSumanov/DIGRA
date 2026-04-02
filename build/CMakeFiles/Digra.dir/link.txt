@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -march=native -lrt -DHAVE_CXX0X -fpic -w -fopenmp -ftree-vectorize -ftree-vectorizer-verbose=0 -mavx -mavx512f -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/Digra.dir/link.d CMakeFiles/Digra.dir/main.cpp.o -o Digra
