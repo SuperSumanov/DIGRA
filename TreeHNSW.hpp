@@ -5,10 +5,6 @@
 #include <unordered_map>
 #include <algorithm>
 #include <random>
-#include <numeric>
-#include <cmath>
-#include <limits>
-#include <queue>
 
 #include "hnswlib/hnswlib.h"
 #define BTREE_M 3
@@ -35,11 +31,12 @@ public:
             M(m),ef_construction(ef_con), space(d), dim(d), linklist(maxEleNum), searchLayer(maxEleNum), eleCount(eleNum), maxNum(maxEleNum){
 
         skipLayer = log(M)/log(BTREE_D);
+        // M = M * 1.5;
         maxLayer = floor(log((float)maxEleNum) / log(BTREE_D));
 
         visited_array = new unsigned int[maxEleNum];
 
-        std::random_device rd;
+        std::random_device rd;  // Obtain a random number from hardware
         eng = std::mt19937 (rd());
 
         data_size_ = space.get_data_size();
@@ -55,25 +52,27 @@ public:
         memcpy(valueList_,valueList, eleNum * sizeof(int));
         memcpy(vecData_,vecData, eleNum * dim * sizeof(float));
 
+
         mult_ = 1 / log(1.0 * M);
         revSize_ = 1.0 / mult_;
 
-        // Only allocate layer-0 per-point storage (O(n) total instead of O(n*logn))
         sizeLinkList = (M * sizeof(tableint) + sizeof(linklistsizeint));
 
         space = hnswlib::L2Space(dim);
 
         sortedArray.reserve(eleNum);
 
-        for(int i = 0; i < (int)eleNum; i++){
+
+        for(int i = 0; i < eleNum; i++){
             key2Id[keyList[i]] = i;
-            linklist[i] = (char *) malloc(sizeLinkList);
+            linklist[i] = (char *) malloc( (maxLayer + 1) * sizeLinkList);
             sortedArray.push_back(i);
         }
 
         sort(sortedArray.begin(),sortedArray.end(),[this](int a, int b) { return this->cmp(a, b); });
 
         root = buildTree(eleNum);
+
     }
 
     std::priority_queue<std::pair<float, hnswlib::labeltype>> queryRange(float *vecData, int rangeL, int rangeR, int k,int ef_s){
@@ -140,9 +139,12 @@ public:
         key2Id[key] = eleCount;
         valueList_[eleCount] = value;
         memcpy(vecData_+ dim * sizeof(float) * eleCount, data, dim * sizeof(float));
-        linklist[eleCount] = (char *) malloc(sizeLinkList);
-        unsigned int *newListData = (unsigned int *) get_linklist(eleCount);
-        setListCount(newListData, 0);
+        linklist[eleCount] = (char *) malloc( (maxLayer + 1) * sizeLinkList);
+        for(int i = 0; i <= maxLayer; i++){
+            unsigned int *newListData = (unsigned int *) get_linklist(eleCount, i);
+
+            setListCount(newListData, 0);
+        }
         eleCount ++;
         addPoint(eleCount - 1);
     }
@@ -157,28 +159,39 @@ public:
     void resize(size_t newMaxN){
         int maxEleNum = newMaxN;
         skipLayer = log(M)/log(BTREE_D);
+
         maxLayer = floor(log((float)maxEleNum) / log(BTREE_D));
+
         visited_array = new unsigned int[maxEleNum];
-        std::random_device rd;
+
+        std::random_device rd;  // Obtain a random number from hardware
         eng = std::mt19937 (rd());
+
         data_size_ = space.get_data_size();
         fstdistfunc_ = space.get_dist_func();
         dist_func_param_ = space.get_dist_func_param();
+
         keyList_ = (int*) realloc(keyList_, maxEleNum * sizeof(int));
         valueList_ = (int*) realloc(valueList_, maxEleNum * sizeof(int));
         vecData_ = (char*)realloc(vecData_,maxEleNum * dim * sizeof(float ));
         isDeleted = (bool*) realloc(isDeleted, maxEleNum * sizeof(bool));
         memset(isDeleted,0,maxEleNum);
+
+
         mult_ = 1 / log(1.0 * M);
         revSize_ = 1.0 / mult_;
+
         sizeLinkList = (M * sizeof(tableint) + sizeof(linklistsizeint));
+
         space = hnswlib::L2Space(dim);
         linklist.resize(maxEleNum);
-        for(int i = 0; i < (int)maxNum; i++){
-            linklist[i] = (char *) realloc(linklist[i], sizeLinkList);
+
+        for(int i = 0; i<maxEleNum;i++){
+            linklist[i] = (char *) realloc(linklist[i], (maxLayer + 1) * sizeLinkList);
         }
+
         for(int i = maxNum; i < maxEleNum; i++){
-            linklist[i] = (char *) malloc(sizeLinkList);
+            linklist[i] = (char *) malloc( (maxLayer + 1) * sizeLinkList);
         }
     }
 
@@ -186,14 +199,15 @@ private:
 
     size_t maxNum, eleCount;
     size_t sizeLinkList;
-
     struct node{
         int entryPoint = -1;
         int keynum = 0;
         int key[BTREE_M];
         struct node* child[BTREE_M + 1];
-        short int layer;
+        short int layer; //layer in tree
+
         node(){}
+
     };
 
     bool cmp(int a,int b){
@@ -229,12 +243,14 @@ private:
 
     int numEdges = 0;
 
+
     float alpha;
     double mult_{0.0}, revSize_{0.0};
 
     int maxLayer;
 
     std::vector<char *> linklist;
+
     std::vector<short int> searchLayer;
     unsigned int *visited_array;
     unsigned int tag = 0;
@@ -242,333 +258,7 @@ private:
 
     std::unordered_map<int,int> key2Id;
 
-    std::mt19937 eng;
-
-    // -------------------------------------------------------
-    // KMeans cluster optimization data structures
-    // -------------------------------------------------------
-
-    struct ClusterInfo {
-        std::vector<float> centroids;               // numClusters * dim floats
-        std::vector<std::vector<tableint>> members; // members[k] = point IDs in cluster k
-        std::vector<tableint> point2cluster;        // point2cluster[pointId] = cluster ID
-        int numClusters = 0;
-    };
-
-    // layerClusters[layer] for layer >= 1
-    std::vector<ClusterInfo> layerClusters;
-    // clusterLinklist[layer][clusterId] = list of neighbor cluster IDs
-    std::vector<std::vector<std::vector<tableint>>> clusterLinklist;
-
-    // -------------------------------------------------------
-    // Helper: squared L2 distance between two float vectors
-    // -------------------------------------------------------
-    inline float l2DistCentroid(const float* a, const float* b) const {
-        float s = 0.0f;
-        for (int i = 0; i < dim; i++) {
-            float diff = a[i] - b[i];
-            s += diff * diff;
-        }
-        return s;
-    }
-
-    // -------------------------------------------------------
-    // KMeans clustering using L2 distance
-    // clusterSize ~= log(N), so numClusters ~= N / log(N)
-    // -------------------------------------------------------
-    ClusterInfo kmeansCluster(const std::vector<tableint>& pointIds, int clusterSize, int maxIter = 5) {
-        int n = (int)pointIds.size();
-        int K = std::max(1, n / std::max(1, clusterSize));
-
-        ClusterInfo info;
-        info.numClusters = K;
-        info.centroids.resize((size_t)K * dim, 0.0f);
-        info.members.resize(K);
-        info.point2cluster.resize(maxNum, 0);
-
-        if (n == 0 || K == 0) return info;
-
-        // Initialize centroids: pick K distinct random point vectors.
-        // K = n / clusterSize <= n, so the shuffle gives K distinct indices.
-        std::vector<int> idxs(n);
-        std::iota(idxs.begin(), idxs.end(), 0);
-        std::shuffle(idxs.begin(), idxs.end(), eng);
-        for (int k = 0; k < K; k++) {
-            const float* src = (const float*)getDataByInternalId(pointIds[idxs[k]]);
-            std::copy(src, src + dim, info.centroids.data() + (size_t)k * dim);
-        }
-
-        // KMeans iterations
-        for (int iter = 0; iter < maxIter; iter++) {
-            for (int k = 0; k < K; k++) info.members[k].clear();
-
-            for (int i = 0; i < n; i++) {
-                tableint pid = pointIds[i];
-                const float* pvec = (const float*)getDataByInternalId(pid);
-                float bestDist = std::numeric_limits<float>::max();
-                int bestK = 0;
-                for (int k = 0; k < K; k++) {
-                    float d = l2DistCentroid(pvec, info.centroids.data() + (size_t)k * dim);
-                    if (d < bestDist) { bestDist = d; bestK = k; }
-                }
-                info.point2cluster[pid] = (tableint)bestK;
-                info.members[bestK].push_back(pid);
-            }
-
-            for (int k = 0; k < K; k++) {
-                if (info.members[k].empty()) {
-                    // Re-seed empty cluster from a random point
-                    std::uniform_int_distribution<> distr(0, n - 1);
-                    const float* src = (const float*)getDataByInternalId(pointIds[distr(eng)]);
-                    std::copy(src, src + dim, info.centroids.data() + (size_t)k * dim);
-                    continue;
-                }
-                float* c = info.centroids.data() + (size_t)k * dim;
-                std::fill(c, c + dim, 0.0f);
-                for (tableint pid : info.members[k]) {
-                    const float* v = (const float*)getDataByInternalId(pid);
-                    for (int d = 0; d < dim; d++) c[d] += v[d];
-                }
-                float inv = 1.0f / (float)info.members[k].size();
-                for (int d = 0; d < dim; d++) c[d] *= inv;
-            }
-        }
-
-        return info;
-    }
-
-    // -------------------------------------------------------
-    // Heuristic neighbor selection using centroid distances
-    // Mirrors getNeighborsByHeuristic2 but operates on cluster centroids
-    // -------------------------------------------------------
-    void getNeighborsByHeuristic2Cluster(
-            ResultHeap& top_candidates,
-            const size_t Mmax,
-            const std::vector<float>& centroids) {
-        if (top_candidates.size() < Mmax) return;
-
-        std::priority_queue<std::pair<float, tableint>> queue_closest;
-        std::vector<std::pair<float, tableint>> return_list;
-        while (!top_candidates.empty()) {
-            queue_closest.emplace(-top_candidates.top().first, top_candidates.top().second);
-            top_candidates.pop();
-        }
-
-        while (!queue_closest.empty()) {
-            if (return_list.size() >= Mmax) break;
-            auto cur = queue_closest.top();
-            float dist_to_query = -cur.first;
-            queue_closest.pop();
-            bool good = true;
-            for (auto& sec : return_list) {
-                float curdist = l2DistCentroid(
-                        centroids.data() + (size_t)sec.second * dim,
-                        centroids.data() + (size_t)cur.second * dim);
-                if (curdist < dist_to_query) { good = false; break; }
-            }
-            if (good) return_list.push_back(cur);
-        }
-
-        for (auto& p : return_list) {
-            top_candidates.emplace(-p.first, p.second);
-        }
-    }
-
-    // -------------------------------------------------------
-    // Build HNSW graph between cluster centroids at a given layer.
-    // Uses getNeighborsByHeuristic2Cluster for M-neighbor selection.
-    // -------------------------------------------------------
-    void buildClusterGraph(int layer) {
-        ClusterInfo& info = layerClusters[layer];
-        int K = info.numClusters;
-        clusterLinklist[layer].assign(K, std::vector<tableint>());
-
-        if (K <= 1) return;
-
-        std::vector<unsigned int> clusterVisited(K, 0);
-        unsigned int cvTag = 0;
-
-        // Insert clusters one by one into the growing graph
-        for (int cid = 1; cid < K; cid++) {
-            cvTag++;
-            const float* qvec = info.centroids.data() + (size_t)cid * dim;
-
-            // Greedy search to find a good entry cluster among those already inserted
-            int entryCid = 0;
-            float entryDist = l2DistCentroid(qvec, info.centroids.data());
-            {
-                bool changed = true;
-                while (changed) {
-                    changed = false;
-                    for (tableint nb : clusterLinklist[layer][entryCid]) {
-                        float d = l2DistCentroid(qvec, info.centroids.data() + (size_t)nb * dim);
-                        if (d < entryDist) { entryDist = d; entryCid = (int)nb; changed = true; }
-                    }
-                }
-            }
-
-            // Beam search to find ef_construction nearest neighbours
-            ResultHeap top_candidates;
-            ResultHeap candidateSet;
-            clusterVisited[entryCid] = cvTag;
-            top_candidates.emplace(entryDist, (tableint)entryCid);
-            candidateSet.emplace(-entryDist, (tableint)entryCid);
-            float lowerBound = entryDist;
-
-            while (!candidateSet.empty()) {
-                auto curr = candidateSet.top();
-                if (-curr.first > lowerBound && (int)top_candidates.size() >= ef_construction) break;
-                candidateSet.pop();
-                int cur = (int)curr.second;
-
-                for (tableint nb : clusterLinklist[layer][cur]) {
-                    int inb = (int)nb;
-                    if (clusterVisited[inb] == cvTag) continue;
-                    clusterVisited[inb] = cvTag;
-#ifdef USE_SSE
-                    _mm_prefetch((char*)(info.centroids.data() + (size_t)inb * dim), _MM_HINT_T0);
-#endif
-                    float d = l2DistCentroid(qvec, info.centroids.data() + (size_t)inb * dim);
-                    if ((int)top_candidates.size() < ef_construction || d < lowerBound) {
-                        candidateSet.emplace(-d, nb);
-                        top_candidates.emplace(d, nb);
-                        if ((int)top_candidates.size() > ef_construction) top_candidates.pop();
-                        if (!top_candidates.empty()) lowerBound = top_candidates.top().first;
-                    }
-                }
-            }
-
-            // Select M neighbours using the heuristic
-            getNeighborsByHeuristic2Cluster(top_candidates, M, info.centroids);
-
-            // Add bidirectional edges
-            while (!top_candidates.empty()) {
-                int nb = (int)top_candidates.top().second;
-                top_candidates.pop();
-                clusterLinklist[layer][cid].push_back((tableint)nb);
-                if ((int)clusterLinklist[layer][nb].size() < M) {
-                    clusterLinklist[layer][nb].push_back((tableint)cid);
-                }
-            }
-        }
-    }
-
-    // -------------------------------------------------------
-    // Search the cluster graph: navigates cluster centroids then
-    // expands members. Used by searchBaseLayer for layers >= 1.
-    // -------------------------------------------------------
-    ResultHeap searchClusterLayer(const std::vector<tableint>& ep_ids,
-                                   const void* data_point, int layer) {
-        tag++;
-        const ClusterInfo& clInfo = layerClusters[layer];
-        int K = clInfo.numClusters;
-
-        ResultHeap top_candidates;
-        if (K == 0) return top_candidates;
-
-        using CluPair = std::pair<float, int>;
-        std::priority_queue<CluPair, std::vector<CluPair>, std::greater<CluPair>> clusterQueue;
-        std::vector<unsigned int> clusterVisited(K, 0);
-        unsigned int cvTag = 1;
-
-        float lowerBound = std::numeric_limits<float>::max();
-
-        for (tableint ep_id : ep_ids) {
-            if (ep_id >= (tableint)clInfo.point2cluster.size()) continue;
-            int cid = (int)clInfo.point2cluster[ep_id];
-            if (cid >= K || clusterVisited[cid] == cvTag) continue;
-            clusterVisited[cid] = cvTag;
-            float d = l2DistCentroid((const float*)data_point,
-                                     clInfo.centroids.data() + (size_t)cid * dim);
-            clusterQueue.push({d, cid});
-        }
-
-        while (!clusterQueue.empty()) {
-            auto [centDist, cid] = clusterQueue.top();
-            clusterQueue.pop();
-
-            if (centDist > lowerBound && (int)top_candidates.size() >= ef_construction) break;
-
-            const auto& members = clInfo.members[cid];
-            for (size_t j = 0; j < members.size(); j++) {
-                tableint mid = members[j];
-#ifdef USE_SSE
-                if (j + 1 < members.size()) {
-                    _mm_prefetch((char*)(visited_array + members[j + 1]), _MM_HINT_T0);
-                    _mm_prefetch(getDataByInternalId(members[j + 1]), _MM_HINT_T0);
-                }
-#endif
-                if (visited_array[mid] == tag) continue;
-                visited_array[mid] = tag;
-
-                float dist = fstdistfunc_(data_point, getDataByInternalId(mid), dist_func_param_);
-                if (!isDeleted[mid]) {
-                    if ((int)top_candidates.size() < ef_construction || dist < lowerBound) {
-                        top_candidates.emplace(dist, mid);
-                        if ((int)top_candidates.size() > ef_construction) top_candidates.pop();
-                        if (!top_candidates.empty()) lowerBound = top_candidates.top().first;
-                    }
-                }
-            }
-
-            for (tableint nb : clusterLinklist[layer][cid]) {
-                int inb = (int)nb;
-                if (inb >= K || clusterVisited[inb] == cvTag) continue;
-                clusterVisited[inb] = cvTag;
-#ifdef USE_SSE
-                _mm_prefetch((char*)(clInfo.centroids.data() + (size_t)inb * dim), _MM_HINT_T0);
-#endif
-                float nd = l2DistCentroid((const float*)data_point,
-                                          clInfo.centroids.data() + (size_t)inb * dim);
-                if ((int)top_candidates.size() < ef_construction || nd < lowerBound) {
-                    clusterQueue.push({nd, inb});
-                }
-            }
-        }
-
-        return top_candidates;
-    }
-
-    // -------------------------------------------------------
-    // Add a dynamically inserted point to cluster memberships
-    // -------------------------------------------------------
-    void addPointToClusters(tableint id) {
-        for (int layer = 1; layer <= maxLayer; layer++) {
-            if (layer >= (int)layerClusters.size()) break;
-            ClusterInfo& clInfo = layerClusters[layer];
-            if (clInfo.numClusters == 0) continue;
-
-            const float* pvec = (const float*)getDataByInternalId(id);
-
-            // Greedy search on cluster graph to find nearest cluster
-            int curC = 0;
-            float curDist = l2DistCentroid(pvec, clInfo.centroids.data());
-            {
-                bool changed = true;
-                while (changed) {
-                    changed = false;
-                    for (tableint nb : clusterLinklist[layer][curC]) {
-                        float d = l2DistCentroid(pvec, clInfo.centroids.data() + (size_t)nb * dim);
-                        if (d < curDist) { curDist = d; curC = (int)nb; changed = true; }
-                    }
-                }
-            }
-
-            // Extend point2cluster if needed
-            if (id >= (tableint)clInfo.point2cluster.size()) {
-                clInfo.point2cluster.resize(id + 1, 0);
-            }
-            clInfo.point2cluster[id] = (tableint)curC;
-            clInfo.members[curC].push_back(id);
-
-            // Update centroid (running average)
-            int sz = (int)clInfo.members[curC].size();
-            float* c = clInfo.centroids.data() + (size_t)curC * dim;
-            for (int d = 0; d < dim; d++) {
-                c[d] = (c[d] * (sz - 1) + pvec[d]) / (float)sz;
-            }
-        }
-    }
+    std::mt19937 eng; // Seed the generator
 
     int findEntryLayer(int Layer) const{
         return Layer % skipLayer;
@@ -592,46 +282,17 @@ private:
             nd->layer = 0;
             nd->entryPoint = sortedArray[i];
             q[qid].push({{i, i}, nd});
-            unsigned int *newListData = (unsigned int *) get_linklist(sortedArray[i]);
+            unsigned int *newListData = (unsigned int *) get_linklist(sortedArray[i], 0);
+
             setListCount(newListData, 0);
+
         }
-
-        // Pre-allocate cluster structures
-        layerClusters.resize(maxLayer + 1);
-        clusterLinklist.resize(maxLayer + 1);
-
-        // clusterSize ~= log(N) so numClusters ~= N/log(N)
-        int clusterSize = std::max(2, (int)std::round(std::log((float)std::max(2, eleNum))));
-
         while(q[qid].size() > 1){
             std::cout<<"layer:"<<q[qid].front().second->layer<<std::endl;
             int nxtqid = qid ^ 1;
-
-            int layer = q[qid].front().second->layer + 1;
-
-            // Build KMeans cluster graph for this layer
-            {
-                std::vector<tableint> layerPoints;
-                layerPoints.reserve(eleNum);
-                // Copy queue to collect all point IDs without consuming it
-                std::queue<std::pair<std::pair<int,int>, node*>> tmpq = q[qid];
-                while (!tmpq.empty()) {
-                    auto& item = tmpq.front();
-                    for (int ii = item.first.first; ii <= item.first.second; ii++) {
-                        layerPoints.push_back(sortedArray[ii]);
-                    }
-                    tmpq.pop();
-                }
-
-                layerClusters[layer] = kmeansCluster(layerPoints, clusterSize);
-                buildClusterGraph(layer);
-
-                // Track edges: each cluster has up to M edges
-                numEdges += layerClusters[layer].numClusters * M;
-            }
-
             while(!q[qid].empty()){
                 std::vector<std::pair<int,int>> tmp;
+                // int numChild = (q[qid].size() >= 2 * BTREE_D) ? BTREE_D : q[qid].size();
 
                 int numChild;
                 if(q[nxtqid].size()%2 == 0){
@@ -645,7 +306,7 @@ private:
                 tmp.reserve(numChild);
                 tmp.resize(numChild);
                 node* nd = new node();
-                nd->keynum = numChild - 1;
+                nd->keynum = numChild - 1 ;
                 for(int i = 0; i < numChild; i++){
                     auto t = q[qid].front();
                     tmp[i] = t.first;
@@ -657,17 +318,59 @@ private:
                 }
                 std::uniform_int_distribution<> distr(0, numChild - 1);
                 nd->entryPoint = nd->child[distr(eng)]->entryPoint;
-                nd->layer = nd->child[0]->layer + 1;
+                int layer = nd->layer = nd->child[0]->layer + 1;
 
-                // No per-point edge building at layers >= 1: cluster graph is used instead
+                for(int i = 0; i < numChild; i++) {
+                    for (int ii = tmp[i].first; ii <= tmp[i].second; ii++) {
+                        int id = sortedArray[ii];
+                        ResultHeap candidates;
+                        char *data = getDataByInternalId(id);
+                        unsigned int *listData = (unsigned int *) get_linklist(id, layer - 1);
+                        int size = getListCount(listData);
 
+                        tableint *listD = (tableint *) (listData + 1);
+                        for (int j = 0; j < size; j++) {
+                            candidates.emplace(
+                                    fstdistfunc_(data, getDataByInternalId(listD[j]),
+                                                 dist_func_param_), listD[j]);
+                        }
+                        for (int j = 0; j < numChild; j++)
+                            if (i != j) {
+                                tableint ep_id = findEntry(data, nd->child[j], nd->child[j]->entryPoint);
+                                std::vector<tableint >ep_ids = {ep_id};
+                                ResultHeap r = searchBaseLayer(ep_ids, data, layer - 1);
+                                getNeighborsByHeuristic2(r, M);
+                                while (!r.empty()) {
+                                    auto pr = r.top();
+                                    r.pop();
+                                    candidates.push(pr);
+                                }
+                            }
+                        getNeighborsByHeuristic2(candidates, M);
+
+                        unsigned int *newListData = (unsigned int *) get_linklist(id, layer);
+
+                        tableint *newListD = (tableint *) (newListData + 1);
+                        int indx = 0;
+                        while (candidates.size() > 0) {
+                            newListD[indx] = candidates.top().second;
+                            candidates.pop();
+                            indx++;
+                        }
+
+                        //    std::cout<<id<<" in layer "<<nd->layer<<" has "<<indx<<" edges"<<std::endl;
+
+                        setListCount(newListData, indx);
+                        numEdges += indx;
+                    }
+                }
                 q[nxtqid].push({{tmp[0].first,tmp[tmp.size() - 1].second}, nd});
             }
 
             qid = nxtqid;
         }
-        std::cout<<"cluster graph built, total cluster edges:"<<numEdges<<std::endl;
-        std::cout<<"average cluster edges per point:"<<numEdges*1.0/eleNum<<std::endl;
+        std::cout<<"edge num:"<<numEdges<<std::endl;
+        std::cout<<"average edges:"<<numEdges*1.0/eleNum<<std::endl;
         return q[qid].front().second;
     }
 
@@ -684,10 +387,11 @@ private:
     void addPoint(int id){
         if (root == NULL)
         {
+            // Allocate memory for root
             root = new node();
-            root->keynum = 1;
+            root->keynum = 1;  // Update number of keys in root
         }
-        else
+        else // If tree is not empty
         {
             insert(root, id);
             if(root->keynum == BTREE_M){
@@ -696,23 +400,14 @@ private:
                 newRoot->keynum = 0;
                 newRoot->child[0] = root;
                 root = newRoot;
-                // Build cluster structure for the new root layer
-                int newLayer = newRoot->layer;
-                if (newLayer >= (int)layerClusters.size()) {
-                    layerClusters.resize(newLayer + 1);
-                    clusterLinklist.resize(newLayer + 1);
-                    std::vector<tableint> allPoints;
-                    allPoints.reserve(eleCount);
-                    for (int i = 0; i < (int)eleCount; i++) allPoints.push_back((tableint)i);
-                    int cs = std::max(2, (int)std::round(std::log((float)std::max(2, (int)eleCount))));
-                    layerClusters[newLayer] = kmeansCluster(allPoints, cs);
-                    buildClusterGraph(newLayer);
+                for(int i = 0; i < eleCount; i++){
+                    memcpy(linklist[i] + root->layer *sizeLinkList, linklist[i] + (root->layer - 1) *sizeLinkList, sizeLinkList);
                 }
-                splitNode(newRoot, 0);
+                splitNode(newRoot,0);
+                // refresh(newRoot);
+                // root = newRoot;
             }
         }
-        // Update cluster memberships for this new point at every layer >= 1
-        addPointToClusters((tableint)id);
     }
 
 
@@ -726,6 +421,7 @@ private:
             }
         }
         if(nd->layer == 1){
+
             for(int i = std::max(0,belong -1); i < nd->keynum - 1; i ++){
                 nd->key[i] = nd->key[i + 1];
             }
@@ -748,18 +444,23 @@ private:
                         nd1->child[i + 1] = nd1->child[i];
                     }
                     nd1->key[0] = nd->key[belong - 1];
+
                     nd1->child[0] = nd2->child[nd2->keynum];
                     nd1->keynum ++;
+
                     nd->key[belong - 1] = nd2->key[nd2->keynum - 1];
                     nd2->keynum --;
+
                     refresh(nd1, 0);
                     refresh(nd2);
                 }
                 else if(belong < nd->keynum && nd->child[belong + 1]->keynum >= BTREE_D){
                     node *nd2 = nd->child[belong + 1];
+
                     nd1->key[nd1->keynum] = nd->key[belong];
                     nd1->keynum ++;
                     nd1->child[nd1->keynum] = nd2->child[0];
+
                     nd->key[belong] = nd2->key[0];
                     for(int i = 0 ; i < nd2->keynum ; i++){
                         nd2->key[i] = nd2->key[i + 1];
@@ -768,7 +469,9 @@ private:
                         nd2->child[i] = nd2->child[i + 1];
                     }
                     nd2->keynum --;
+
                     refresh(nd1, nd1->keynum);
+
                     refresh(nd2);
                 }
                 else if(belong > 0){
@@ -781,9 +484,83 @@ private:
         }
     }
 
-    // Simplified refresh: update B-tree entry point only.
-    // Cluster graph edges are fixed; only membership changes via addPointToClusters.
-    void refresh(node *nd, int){
+    void refresh(node *nd, int refreshId){
+        std::vector<tableint> tmp;
+        traverse(tmp,nd);
+        int layer = nd->layer;
+        int belong = 0;
+        for(int i = 0 ; i < tmp.size(); i++) {
+            tableint id = tmp[i];
+            if (belong < nd->keynum && (!cmp(id, nd->key[belong]))) belong++;
+            ResultHeap candidates;
+            char *data = getDataByInternalId(id);
+
+            if (belong == refreshId) {
+                unsigned int *listData = (unsigned int *) get_linklist(id, layer - 1);
+                int size = getListCount(listData);
+
+                tableint *listD = (tableint *) (listData + 1);
+                for (int j = 0; j < size; j++) {
+                    if (!isDeleted[listD[j]])
+                        candidates.emplace(
+                                fstdistfunc_(data, getDataByInternalId(listD[j]),
+                                             dist_func_param_), listD[j]);
+                }
+
+                for (int j = 0; j <= nd->keynum; j++)
+                    if (j != belong) {
+
+                        std::vector<tableint> ep_ids;
+                        if (ep_ids.size() == 0) {
+                            tableint ep_id = findEntry(data, nd->child[j], nd->child[j]->entryPoint);
+                            ep_ids.push_back(ep_id);
+                        }
+                        ResultHeap r = searchBaseLayer(ep_ids, data, layer - 1);
+                        getNeighborsByHeuristic2(r, M);
+                        while (!r.empty()) {
+                            auto pr = r.top();
+                            r.pop();
+                            candidates.push(pr);
+                        }
+                    }
+            }
+            else{
+                unsigned int *listData = (unsigned int *) get_linklist(id, layer);
+                int size = getListCount(listData);
+
+                tableint *listD = (tableint *) (listData + 1);
+                for (int j = 0; j < size; j++) {
+                    if (!isDeleted[listD[j]])
+                        candidates.emplace(
+                                fstdistfunc_(data, getDataByInternalId(listD[j]),
+                                             dist_func_param_), listD[j]);
+                }
+
+                std::vector<tableint> ep_ids;
+                if (ep_ids.size() == 0) {
+                    tableint ep_id = findEntry(data, nd->child[refreshId], nd->child[refreshId]->entryPoint);
+                    ep_ids.push_back(ep_id);
+                }
+                ResultHeap r = searchBaseLayer(ep_ids, data, layer - 1);
+                getNeighborsByHeuristic2(r, M);
+                while (!r.empty()) {
+                    auto pr = r.top();
+                    r.pop();
+                    candidates.push(pr);
+                }
+            }
+            getNeighborsByHeuristic2(candidates, M);
+            unsigned int *newListData = (unsigned int *) get_linklist(id, layer);
+
+            tableint *newListD = (tableint *) (newListData + 1);
+            int indx = 0;
+            while (candidates.size() > 0) {
+                newListD[indx] = candidates.top().second;
+                candidates.pop();
+                indx++;
+            }
+            setListCount(newListData, indx);
+        }
         updateEntry(nd);
     }
 
@@ -822,7 +599,16 @@ private:
             node *newnd = new node();
             newnd->layer = 0;
             newnd->entryPoint = id;
-            // Insert into B-tree structure; no per-point edges for layers >= 1
+
+            unsigned int *newListData = (unsigned int *) get_linklist(id, 1);
+            tableint *newListD = (tableint *) (newListData + 1);
+            int indx = 0;
+            for(int i = 0; i <=nd->keynum; i++){
+                newListD[indx] = nd->child[i]->entryPoint;
+                indx++;
+            }
+            setListCount(newListData, indx);
+
             for(int i = nd->keynum -1; i >= belong; i --){
                 nd->key[i + 1] = nd->key[i];
             }
@@ -845,7 +631,11 @@ private:
                 splitNode(nd, belong);
             }
         }
-        return ep_id;
+        std::vector<tableint >ep_ids = {ep_id};
+        char *data = getDataByInternalId(id);
+        auto candidates = searchBaseLayer(ep_ids, data,nd->layer);
+        getNeighborsByHeuristic2(candidates,M);
+        return connectEdges(data,id,candidates, nd->layer);
     }
 
     void splitNode(node *nd, int splitId){
@@ -877,9 +667,137 @@ private:
         updateEntry(nd);
     }
 
-    // Simplified refresh: update entry point only
+
     void refresh(node *nd){
+        std::vector<tableint> tmp;
+        traverse(tmp,nd);
+        int layer = nd->layer;
+        int belong = 0;
+        for(int i = 0 ; i < tmp.size(); i++){
+            tableint id = tmp[i];
+            if(belong<nd->keynum&&(!cmp(id,nd->key[belong]))) belong++;
+            ResultHeap candidates;
+            char *data = getDataByInternalId(id);
+
+            unsigned int *prelistData = (unsigned int *) get_linklist(id, layer);
+            int presize = getListCount(prelistData);
+
+            tableint *prelistD = (tableint *) (prelistData + 1);
+
+
+            unsigned int *listData = (unsigned int *) get_linklist(id, layer - 1);
+            int size = getListCount(listData);
+
+            tableint *listD = (tableint *) (listData + 1);
+            for (int j = 0; j < size; j++) {
+                if(!isDeleted[listD[j]])
+                    candidates.emplace(
+                            fstdistfunc_(data, getDataByInternalId(listD[j]),
+                                         dist_func_param_), listD[j]);
+            }
+
+            for(int j = 0; j <= nd->keynum; j++)
+                if(j!=belong){
+
+                    std::vector<tableint >ep_ids;
+                    for (int k = 0; k < presize; k++) {
+                        if(!isDeleted[prelistD[k]])
+                            if((j == 0 && (!cmp(prelistD[k],tmp[0]))|| ((j!=0)&&(!cmp(prelistD[k],nd->key[j - 1])))))
+                                if((j == nd->keynum && cmp(prelistD[k], tmp[tmp.size() - 1]))|| ((j!=nd->keynum)&&cmp(prelistD[k], nd->key[j]))){
+                                    ep_ids.push_back(prelistD[k]);
+                                }
+                    }
+                    if(ep_ids.size() == 0) {
+                        tableint ep_id = findEntry(data, nd->child[j], nd->child[j]->entryPoint);
+                        ep_ids.push_back(ep_id);
+                    }
+                    ResultHeap r = searchBaseLayer(ep_ids, data, layer - 1);
+                    getNeighborsByHeuristic2(r, M);
+                    while (!r.empty()) {
+                        auto pr = r.top();
+                        r.pop();
+                        candidates.push(pr);
+                    }
+                }
+            getNeighborsByHeuristic2(candidates, M);
+
+            unsigned int *newListData = (unsigned int *) get_linklist(id, layer);
+
+            tableint *newListD = (tableint *) (newListData + 1);
+            int indx = 0;
+            while (candidates.size() > 0) {
+                newListD[indx] = candidates.top().second;
+                candidates.pop();
+                indx++;
+            }
+            setListCount(newListData, indx);
+        }
         updateEntry(nd);
+    }
+
+    tableint connectEdges(
+            const void *data_point,
+            tableint cur_c,
+            ResultHeap &top_candidates,
+            int layer) {
+
+        std::vector<tableint> selectedNeighbors;
+        selectedNeighbors.reserve(M);
+        while (top_candidates.size() > 0) {
+            selectedNeighbors.push_back(top_candidates.top().second);
+            top_candidates.pop();
+        }
+
+        tableint next_closest_entry_point = selectedNeighbors.back();
+
+        {
+            linklistsizeint *ll_cur = get_linklist(cur_c, layer);
+
+            setListCount(ll_cur, selectedNeighbors.size());
+            tableint *data = (tableint *) (ll_cur + 1);
+            for (size_t idx = 0; idx < selectedNeighbors.size(); idx++) {
+                data[idx] = selectedNeighbors[idx];
+            }
+        }
+
+        for (size_t idx = 0; idx < selectedNeighbors.size(); idx++) {
+
+            linklistsizeint *ll_other = get_linklist(selectedNeighbors[idx], layer);
+
+            size_t sz_link_list_other = getListCount(ll_other);
+
+            tableint *data = (tableint *) (ll_other + 1);
+            if (sz_link_list_other < M) {
+                data[sz_link_list_other] = cur_c;
+                setListCount(ll_other, sz_link_list_other + 1);
+            } else {
+                // finding the "weakest" element to replace it with the new one
+                float d_max = fstdistfunc_(getDataByInternalId(cur_c), getDataByInternalId(selectedNeighbors[idx]),
+                                           dist_func_param_);
+                // Heuristic:
+                ResultHeap candidates;
+                candidates.emplace(d_max, cur_c);
+
+                for (size_t j = 0; j < sz_link_list_other; j++) {
+                    candidates.emplace(
+                            fstdistfunc_(getDataByInternalId(data[j]), getDataByInternalId(selectedNeighbors[idx]),
+                                         dist_func_param_), data[j]);
+                }
+
+                getNeighborsByHeuristic2(candidates, M);
+
+                int indx = 0;
+                while (candidates.size() > 0) {
+                    data[indx] = candidates.top().second;
+                    candidates.pop();
+                    indx++;
+                }
+
+                setListCount(ll_other, indx);
+            }
+        }
+
+        return next_closest_entry_point;
     }
 
     node* findHighNode(node* node,int rangeL, int rangeR){
@@ -952,39 +870,86 @@ private:
         return (char*)(vecData_ + internal_id * data_size_);
     }
 
-    // -------------------------------------------------------
-    // searchBaseLayer: used during construction and dynamic ops.
-    // For layers >= 1: delegates to searchClusterLayer.
-    // For layer 0: layer 0 has no edges; returns ep_ids as candidates.
-    // -------------------------------------------------------
     ResultHeap searchBaseLayer(const std::vector<tableint> &ep_ids, const void *data_point, int layer) {
-        if (layer >= 1 && layer < (int)layerClusters.size() && layerClusters[layer].numClusters > 0) {
-            return searchClusterLayer(ep_ids, data_point, layer);
+        tag ++;
+
+        ResultHeap top_candidates;
+        ResultHeap candidateSet;
+
+        float lowerBound;
+
+        for(int i = 0; i < ep_ids.size(); i++) {
+            int ep_id = ep_ids[i];
+            float dist = fstdistfunc_(data_point, getDataByInternalId(ep_id), dist_func_param_);
+            if(!isDeleted[ep_id]) {
+                top_candidates.emplace(dist, ep_id);
+                candidateSet.emplace(-dist, ep_id);
+            }
+            else{
+                candidateSet.emplace(-std::numeric_limits<float>::max(), ep_id);
+            }
+            visited_array[ep_id] = tag;
         }
 
-        // Layer 0: no edges; evaluate entry points directly
-        tag++;
-        ResultHeap top_candidates;
-        for (tableint ep_id : ep_ids) {
-            if (visited_array[ep_id] == tag) continue;
-            visited_array[ep_id] = tag;
-            float dist = fstdistfunc_(data_point, getDataByInternalId(ep_id), dist_func_param_);
-            if (!isDeleted[ep_id]) {
-                top_candidates.emplace(dist, ep_id);
+        if(!top_candidates.empty())
+            lowerBound = top_candidates.top().first;
+        else
+            lowerBound = std::numeric_limits<float>::max();
+
+
+        while (!candidateSet.empty()) {
+            std::pair<float, tableint> curr_el_pair = candidateSet.top();
+            if ((-curr_el_pair.first) > lowerBound && top_candidates.size() == ef_construction) {
+                break;
+            }
+            candidateSet.pop();
+
+            tableint curNodeNum = curr_el_pair.second;
+
+            for(int i = 0; i <= 0; i++) {
+                if(layer - i <= 0) break;
+                int *data = (int *) get_linklist(curNodeNum, layer - i);
+                size_t size = getListCount((linklistsizeint *) data);
+                tableint *datal = (tableint *) (data + 1);
+
+                for (size_t j = 0; j < size; j++) {
+                    tableint candidate_id = *(datal + j);
+#ifdef USE_SSE
+                    _mm_prefetch((char *) (visited_array + *(datal + j + 1)), _MM_HINT_T0);
+                    _mm_prefetch(getDataByInternalId(*(datal + j + 1)), _MM_HINT_T0);
+                    _mm_prefetch((char *) (visited_array + *(datal + j + 2)), _MM_HINT_T0);
+                    _mm_prefetch(getDataByInternalId(*(datal + j + 2)), _MM_HINT_T0);
+                    // _mm_prefetch((char *) (visited_array + *(datal + j + 3)), _MM_HINT_T0);
+                    // _mm_prefetch(getDataByInternalId(*(datal + j + 3)), _MM_HINT_T0);
+                    // _mm_prefetch((char *) (visited_array + *(datal + j + 4)), _MM_HINT_T0);
+                    // _mm_prefetch(getDataByInternalId(*(datal + j + 4)), _MM_HINT_T0);
+#endif
+                    if (visited_array[candidate_id] == tag) continue;
+                    visited_array[candidate_id] = tag;
+                    char *currObj1 = (getDataByInternalId(candidate_id));
+
+                    float dist1 = fstdistfunc_(data_point, currObj1, dist_func_param_);
+                    if (top_candidates.size() < ef_construction || lowerBound > dist1) {
+                        candidateSet.emplace(-dist1, candidate_id);
+#ifdef USE_SSE
+                        _mm_prefetch(getDataByInternalId(candidateSet.top().second), _MM_HINT_T0);
+#endif
+
+                        if(!isDeleted[candidate_id])
+                            top_candidates.emplace(dist1, candidate_id);
+                        if (top_candidates.size() > ef_construction)
+                            top_candidates.pop();
+
+                        if (!top_candidates.empty())
+                            lowerBound = top_candidates.top().first;
+                    }
+                }
             }
         }
+
         return top_candidates;
     }
 
-    // -------------------------------------------------------
-    // searchBaseLayer0: main range-query search with LCA support.
-    // Preserves:
-    //   - searchLayer tracking for cross-layer LCA navigation
-    //   - splitPoint cross-subtree expansion
-    //   - all _mm_prefetch instructions
-    //   - range filter (valueList_)
-    // Replaces per-point linklist traversal with cluster graph traversal.
-    // -------------------------------------------------------
     ResultHeap
     searchBaseLayer0(std::vector<tableint> ep_ids, const void *data_point, int Layer, int rangeL, int rangeR, int ef, int splitPoint) {
         tag ++;
@@ -993,7 +958,8 @@ private:
         ResultHeap candidateSet;
 
         float lowerBound;
-        for(tableint ep_id : ep_ids) {
+        for(int i = 0; i < ep_ids.size(); i++) {
+            int ep_id = ep_ids[i];
             float dist = fstdistfunc_(data_point, getDataByInternalId(ep_id), dist_func_param_);
             if(!isDeleted[ep_id] && valueList_[ep_id]>=rangeL && valueList_[ep_id] <= rangeR) {
                 top_candidates.emplace(dist, ep_id);
@@ -1014,133 +980,108 @@ private:
             std::pair<float, tableint> curr_el_pair = candidateSet.top();
             tableint curNodeNum = curr_el_pair.second;
             short int layer = searchLayer[curNodeNum];
-            if ((-curr_el_pair.first) > lowerBound && top_candidates.size() == (size_t)ef) {
+            if ((-curr_el_pair.first) > lowerBound && top_candidates.size() == ef) {
                 break;
             }
             candidateSet.pop();
 
-            // -------------------------------------------------------
-            // Main neighbour expansion via cluster graph (two layers)
-            // -------------------------------------------------------
             for(int i = 0; i <= 1; i++) {
-                int curLayer = layer - i;
-                if(curLayer <= 0) break;
+                if(layer - i <= 0) break;
+                int *data = (int *) get_linklist(curNodeNum, layer - i);
 
-                if (curLayer < (int)layerClusters.size() && layerClusters[curLayer].numClusters > 0) {
-                    const ClusterInfo& clInfo = layerClusters[curLayer];
-                    int clusterId = (curNodeNum < (tableint)clInfo.point2cluster.size())
-                                        ? (int)clInfo.point2cluster[curNodeNum] : 0;
-                    const auto& nbList = clusterLinklist[curLayer][clusterId];
+                size_t size = getListCount((linklistsizeint *) data);
+                tableint *datal = (tableint *) (data + 1);
 #ifdef USE_SSE
-                    if (!clInfo.members[clusterId].empty()) {
-                        _mm_prefetch((char*)(visited_array + clInfo.members[clusterId][0]), _MM_HINT_T0);
-                        _mm_prefetch(getDataByInternalId(clInfo.members[clusterId][0]), _MM_HINT_T0);
-                    }
+                _mm_prefetch((char *) (visited_array + *(data + 1)), _MM_HINT_T0);
+                _mm_prefetch((char *) (visited_array + *(data + 1) + 64), _MM_HINT_T0);
+                _mm_prefetch(getDataByInternalId(*datal), _MM_HINT_T0);
+                _mm_prefetch(getDataByInternalId(*(datal + 1)), _MM_HINT_T0);
 #endif
-                    // Expand own cluster (ci=-1) then neighbor clusters (ci>=0)
-                    for (int ci = -1; ci < (int)nbList.size(); ci++) {
-                        int expandCid = (ci < 0) ? clusterId : (int)nbList[ci];
-                        const auto& members = clInfo.members[expandCid];
-#ifdef USE_SSE
-                        if (!members.empty()) {
-                            _mm_prefetch((char*)(visited_array + members[0]), _MM_HINT_T0);
-                            _mm_prefetch(getDataByInternalId(members[0]), _MM_HINT_T0);
-                        }
-#endif
-                        for (size_t j = 0; j < members.size(); j++) {
-                            tableint candidate_id = members[j];
-#ifdef USE_SSE
-                            if (j + 1 < members.size()) {
-                                _mm_prefetch((char*)(visited_array + members[j + 1]), _MM_HINT_T0);
-                                _mm_prefetch(getDataByInternalId(members[j + 1]), _MM_HINT_T0);
-                            }
-#endif
-                            if (visited_array[candidate_id] == tag) continue;
-                            visited_array[candidate_id] = tag;
-                            char *currObj1 = getDataByInternalId(candidate_id);
 
-                            float dist1 = fstdistfunc_(data_point, currObj1, dist_func_param_);
-                            if (top_candidates.size() < (size_t)ef || lowerBound > dist1) {
-                                candidateSet.emplace(-dist1, candidate_id);
-                                searchLayer[candidate_id] = layer;  // use parent's layer, not curLayer
+                for (size_t j = 0; j < size; j++) {
+                    tableint candidate_id = *(datal + j);
 #ifdef USE_SSE
-                                _mm_prefetch(getDataByInternalId(candidateSet.top().second), _MM_HINT_T0);
+                    // if(j%2 == 0){
+                        _mm_prefetch((char *) (visited_array + *(datal + j + 1)), _MM_HINT_T0);
+                        _mm_prefetch(getDataByInternalId(*(datal + j + 1)), _MM_HINT_T0);
+                        _mm_prefetch((char *) (visited_array + *(datal + j + 2)), _MM_HINT_T0);
+                        _mm_prefetch(getDataByInternalId(*(datal + j + 2)), _MM_HINT_T0);
+                    // }
 #endif
-                                if(!isDeleted[candidate_id])
-                                    if (valueList_[candidate_id] >= rangeL && valueList_[candidate_id] <= rangeR)
-                                        top_candidates.emplace(dist1, candidate_id);
+                    if (visited_array[candidate_id] == tag) continue;
+                    // if ( !(valueList_[candidate_id] >= rangeL && valueList_[candidate_id] <= rangeR))continue;
+                    visited_array[candidate_id] = tag;
+                    char *currObj1 = (getDataByInternalId(candidate_id));
 
-                                if (top_candidates.size() > (size_t)ef)
-                                    top_candidates.pop();
+                    tableint cid = candidate_id;
 
-                                if (!top_candidates.empty())
-                                    lowerBound = top_candidates.top().first;
-                            }
-                        }
+                    float dist1 = fstdistfunc_(data_point, currObj1, dist_func_param_);
+                    if (top_candidates.size() < ef || lowerBound > dist1) {
+                        candidateSet.emplace(-dist1, cid);
+                        searchLayer[cid] = layer;
+#ifdef USE_SSE
+                        _mm_prefetch(getDataByInternalId(candidateSet.top().second), _MM_HINT_T0);
+#endif
+
+                        if(!isDeleted[candidate_id])
+                            if ( valueList_[candidate_id] >= rangeL && valueList_[candidate_id] <= rangeR)
+                                top_candidates.emplace(dist1, cid);
+
+                        if (top_candidates.size() > ef)
+                            top_candidates.pop();
+
+                        if (!top_candidates.empty())
+                            lowerBound = top_candidates.top().first;
                     }
                 }
-                // layer 0 has no edges; no fallback needed
             }
 
-            // -------------------------------------------------------
-            // LCA split-point cross-subtree expansion (preserved)
-            // -------------------------------------------------------
-            if(splitPoint != -1) {
-                int clLayer = Layer;
-                if (clLayer >= 1 && clLayer < (int)layerClusters.size() &&
-                    layerClusters[clLayer].numClusters > 0) {
-                    const ClusterInfo& clInfo = layerClusters[clLayer];
-                    int clusterId = (curNodeNum < (tableint)clInfo.point2cluster.size())
-                                        ? (int)clInfo.point2cluster[curNodeNum] : 0;
-                    const auto& nbList = clusterLinklist[clLayer][clusterId];
-#ifdef USE_SSE
-                    if (!clInfo.members[clusterId].empty()) {
-                        _mm_prefetch((char*)(visited_array + clInfo.members[clusterId][0]), _MM_HINT_T0);
-                        _mm_prefetch(getDataByInternalId(clInfo.members[clusterId][0]), _MM_HINT_T0);
-                    }
-#endif
-                    // Expand own cluster (ci=-1) then neighbor clusters (ci>=0)
-                    for (int ci = -1; ci < (int)nbList.size(); ci++) {
-                        int expandCid = (ci < 0) ? clusterId : (int)nbList[ci];
-                        const auto& members = clInfo.members[expandCid];
-#ifdef USE_SSE
-                        if (!members.empty()) {
-                            _mm_prefetch((char*)(visited_array + members[0]), _MM_HINT_T0);
-                            _mm_prefetch(getDataByInternalId(members[0]), _MM_HINT_T0);
-                        }
-#endif
-                        for (size_t j = 0; j < members.size(); j++) {
-                            tableint candidate_id = members[j];
-#ifdef USE_SSE
-                            if (j + 1 < members.size()) {
-                                _mm_prefetch((char*)(visited_array + members[j + 1]), _MM_HINT_T0);
-                                _mm_prefetch(getDataByInternalId(members[j + 1]), _MM_HINT_T0);
-                            }
-#endif
-                            if (visited_array[candidate_id] == tag) continue;
-                            if (!(valueList_[candidate_id] >= rangeL && valueList_[candidate_id] <= rangeR)) continue;
-                            visited_array[candidate_id] = tag;
-                            char *currObj1 = getDataByInternalId(candidate_id);
+            // if(splitPoint!=-1) {
+            if(splitPoint!=-1) {
+                int *data = (int *) get_linklist(curNodeNum, Layer);
 
-                            float dist1 = fstdistfunc_(data_point, currObj1, dist_func_param_);
-                            if (top_candidates.size() < (size_t)ef || lowerBound > dist1) {
-                                candidateSet.emplace(-dist1, candidate_id);
-                                // Assign the "other side" layer (LCA cross-subtree logic preserved)
-                                searchLayer[candidate_id] = (ep_ids.size() >= 2 && searchLayer[ep_ids[0]] == layer)
-                                        ? searchLayer[ep_ids[1]] : searchLayer[ep_ids[0]];
+                size_t size = getListCount((linklistsizeint *) data);
+                tableint *datal = (tableint *) (data + 1);
 #ifdef USE_SSE
-                                _mm_prefetch(getDataByInternalId(candidateSet.top().second), _MM_HINT_T0);
+                _mm_prefetch((char *) (visited_array + *(data + 1)), _MM_HINT_T0);
+                _mm_prefetch((char *) (visited_array + *(data + 1) + 64), _MM_HINT_T0);
+                _mm_prefetch(getDataByInternalId(*datal), _MM_HINT_T0);
+                _mm_prefetch(getDataByInternalId(*(datal + 1)), _MM_HINT_T0);
 #endif
-                                if (valueList_[candidate_id] >= rangeL && valueList_[candidate_id] <= rangeR)
-                                    top_candidates.emplace(dist1, candidate_id);
 
-                                if (top_candidates.size() > (size_t)ef)
-                                    top_candidates.pop();
+                for (size_t j = 0; j < size; j++) {
+                    tableint candidate_id = *(datal + j);
+#ifdef USE_SSE
+                    // if(j%2==0){
+                    _mm_prefetch((char *) (visited_array + *(datal + j + 1)), _MM_HINT_T0);
+                    _mm_prefetch(getDataByInternalId(*(datal + j + 1)), _MM_HINT_T0);
+                    _mm_prefetch((char *) (visited_array + *(datal + j + 2)), _MM_HINT_T0);
+                    _mm_prefetch(getDataByInternalId(*(datal + j + 2)), _MM_HINT_T0);
+                    // }
+#endif
+                    if (visited_array[candidate_id] == tag) continue;
+                    if ( !(valueList_[candidate_id] >= rangeL && valueList_[candidate_id] <= rangeR))continue;
+                    visited_array[candidate_id] = tag;
+                    char *currObj1 = (getDataByInternalId(candidate_id));
 
-                                if (!top_candidates.empty())
-                                    lowerBound = top_candidates.top().first;
-                            }
-                        }
+                    tableint cid = candidate_id;
+
+                    float dist1 = fstdistfunc_(data_point, currObj1, dist_func_param_);
+                    if (top_candidates.size() < ef || lowerBound > dist1) {
+                        candidateSet.emplace(-dist1, cid);
+                        searchLayer[cid] = searchLayer[ep_ids[0]] == layer ? searchLayer[ep_ids[1]]: searchLayer[ep_ids[0]];
+#ifdef USE_SSE
+                        _mm_prefetch(getDataByInternalId(candidateSet.top().second), _MM_HINT_T0);
+#endif
+
+                        if ( valueList_[candidate_id] >= rangeL && valueList_[candidate_id] <= rangeR)
+                            top_candidates.emplace(dist1, cid);
+
+                        if (top_candidates.size() > ef)
+                            top_candidates.pop();
+
+                        if (!top_candidates.empty())
+                            lowerBound = top_candidates.top().first;
                     }
                 }
             }
@@ -1149,11 +1090,6 @@ private:
         return top_candidates;
     }
 
-    // -------------------------------------------------------
-    // findEntry: greedy descent to find best entry point in nd's subtree.
-    // For layers >= 1: navigate the cluster graph, then expand members.
-    // Preserves _mm_prefetch instructions.
-    // -------------------------------------------------------
     tableint
     findEntry(const void *query_data, node *nd, tableint currObj) const {
         float curdist = fstdistfunc_(query_data, getDataByInternalId(currObj), dist_func_param_);
@@ -1161,60 +1097,15 @@ private:
         int startLayer = findEntryLayer(endLayer);
 
         for (int layer = startLayer; layer < endLayer; layer += skipLayer) {
+            bool changed = true;
+            while (changed) {
+                changed = false;
+                unsigned int *data;
 
-            if (layer >= 1 && layer < (int)layerClusters.size() &&
-                layerClusters[layer].numClusters > 0) {
-                // -------------------------------------------------------
-                // Cluster-graph greedy descent with prefetch
-                // -------------------------------------------------------
-                const ClusterInfo& clInfo = layerClusters[layer];
-                int curCluster = (currObj < (tableint)clInfo.point2cluster.size())
-                                     ? (int)clInfo.point2cluster[currObj] : 0;
-
-                // Phase 1: navigate cluster graph to find nearest cluster centroid
-                float centDist = l2DistCentroid(
-                        (const float*)query_data,
-                        clInfo.centroids.data() + (size_t)curCluster * dim);
-                {
-                    bool changed = true;
-                    while (changed) {
-                        changed = false;
-                        for (tableint nb : clusterLinklist[layer][curCluster]) {
-                            int inb = (int)nb;
-#ifdef USE_SSE
-                            _mm_prefetch((char*)(clInfo.centroids.data() + (size_t)inb * dim), _MM_HINT_T0);
-#endif
-                            float d = l2DistCentroid(
-                                    (const float*)query_data,
-                                    clInfo.centroids.data() + (size_t)inb * dim);
-                            if (d < centDist) { centDist = d; curCluster = inb; changed = true; }
-                        }
-                    }
-                }
-
-                // Phase 2: expand best cluster AND its neighbors to find nearest actual point
-                const auto& nbList = clusterLinklist[layer][curCluster];
-                for (int ci = -1; ci < (int)nbList.size(); ci++) {
-                    int expandCid = (ci < 0) ? curCluster : (int)nbList[ci];
-                    const auto& cMembers = clInfo.members[expandCid];
-                    for (size_t j = 0; j < cMembers.size(); j++) {
-                        tableint member = cMembers[j];
-#ifdef USE_SSE
-                        if (j + 1 < cMembers.size())
-                            _mm_prefetch(getDataByInternalId(cMembers[j + 1]), _MM_HINT_T0);
-#endif
-                        float d = fstdistfunc_(query_data, getDataByInternalId(member), dist_func_param_);
-                        if (d < curdist) { curdist = d; currObj = member; }
-                    }
-                }
-
-            } else {
-                // Fallback (layer 0 or uninitialized): per-point navigation
-                bool changed = true;
-                while (changed) {
-                    changed = false;
-                    unsigned int *data = (unsigned int *) get_linklist(currObj);
+                for(int l = 0; l <= 0 ; l++){
+                    data = (unsigned int *) get_linklist(currObj, layer-l);
                     int size = getListCount(data);
+
                     tableint *datal = (tableint *) (data + 1);
                     for (int i = 0; i < size; i++) {
                         tableint cand = datal[i];
@@ -1223,7 +1114,12 @@ private:
                         _mm_prefetch(getDataByInternalId(*(datal + i + 2)), _MM_HINT_T0);
 #endif
                         float d = fstdistfunc_(query_data, getDataByInternalId(cand), dist_func_param_);
-                        if (d < curdist) { curdist = d; currObj = cand; changed = true; }
+
+                        if (d < curdist) {
+                            curdist = d;
+                            currObj = cand;
+                            changed = true;
+                        }
                     }
                 }
             }
@@ -1232,9 +1128,8 @@ private:
     }
 
 
-    // All per-point storage lives in a single sizeLinkList block (layer 0 only).
-    linklistsizeint *get_linklist(tableint internal_id) const {
-        return (linklistsizeint *) (linklist[internal_id]);
+    linklistsizeint *get_linklist(tableint internal_id, int layer) const {
+        return (linklistsizeint *) (linklist[internal_id] + sizeLinkList * layer);
     }
 
 
