@@ -129,7 +129,7 @@ public:
         while(!result.empty()){
             auto r = result.top();
             result.pop();
-            top.push({r.first,keyList_[r.second]});
+            top.push({r.first,r.second});
         }
         return top;
     }

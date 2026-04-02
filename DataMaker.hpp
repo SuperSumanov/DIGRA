@@ -94,7 +94,7 @@ private:
         for(int i = 0; i < baseNum; i++){
             if(value[i] >= L && value[i] <= R) {
                 // std::cout << i << std::endl;
-                result.push_back({getDistance(query_id,i),key[i]});
+                result.push_back({getDistance(query_id,i),i});
             }
         }
         sort(result.begin(), result.end());
